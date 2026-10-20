@@ -44,6 +44,8 @@ After confirming the project ref and reviewing the preflight results, open the p
 
 ## AED import (M3-4)
 
+Guarded-import prerequisite: after review and separate approval, apply `20261021010000_facility_change_review.sql` after both existing migrations. The CLI now calls `stage_facility_batch` and distinguishes inserted, updated, held and unchanged records. A held candidate leaves published data intact and makes the command exit unsuccessfully until reviewed. Per-batch retry UUIDs preserve the original result after transport failures. Do not switch back to a direct UPSERT to bypass review; the historical RPC is also guarded after applying the migration. The new SQL has not been applied by this code change.
+
 Only AED records are imported by default. Emergency medical records require an explicit `--medical-json` option and remain out of scope for this task.
 
 ```powershell

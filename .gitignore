@@ -4,6 +4,7 @@ dist/
 .venv/
 __pycache__/
 .pytest_cache/
+pytest-cache-files-*/
 *.py[cod]
 *.log
 .env
@@ -19,3 +20,4 @@ backend/medical/medical_response.xml
 backend/AED/aed_collection_progress.json
 backend/medical/medical_collection_progress.json
 samples/*.json
+backend/import_errors.jsonl

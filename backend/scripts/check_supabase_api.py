@@ -9,8 +9,8 @@ except ImportError:
 def main():
     try:
         client = create_supabase_client()
-        # A read-only Storage request validates the Supabase project API and key.
-        client.storage.list_buckets()
+        # Check the actual application table rather than unrelated Storage grants.
+        client.table("facilities").select("id").limit(1).execute()
         print("Supabase REST API connection succeeded for the configured project.")
         return 0
     except Exception as error:  # noqa: BLE001 - SDK details can contain credentials

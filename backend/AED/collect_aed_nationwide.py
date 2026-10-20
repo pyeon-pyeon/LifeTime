@@ -59,7 +59,7 @@ def fetch_page(session, page_no):
         ) as error:
             print(
                 f"페이지 {page_no} 재시도 "
-                f"{attempt}/3: {error}"
+                f"{attempt}/3: {type(error).__name__}"
             )
             if attempt == 3:
                 raise
@@ -210,4 +210,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as error:
+        raise SystemExit(f"AED collection failed ({type(error).__name__}); credentials hidden") from None

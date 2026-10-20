@@ -2,9 +2,9 @@
 
 ## Source review
 
-The checked-in datasets contain 63,473 AED records and 530 emergency-room records. Their shared normalized fields are `facility_type`, `source_id`, `name`, `address`, `latitude`, `longitude`, `source_updated_at`, `data_collected_at`, and `source_name`. AED records also contain `sido`, `gugun`, `installation_detail`, `contact_phone`, `schedule_status`, and `access_hours`. Emergency-room records contain `contact_phone` and `emergency_phone`. In the inspected datasets, coordinates are JSON numbers, `source_updated_at` is null, and `data_collected_at` is an offset-bearing ISO 8601 string. Missing values remain SQL NULL. See [field-mapping.md](field-mapping.md) for API-source mappings.
+Historical local snapshots were documented as containing 63,473 AED records and 530 emergency-room records. Those nationwide files are excluded from Git and are absent in the current checkout; these numbers are not current database counts. Their shared normalized fields are `facility_type`, `source_id`, `name`, `address`, `latitude`, `longitude`, `source_updated_at`, `data_collected_at`, and `source_name`. AED records also contain `sido`, `gugun`, `installation_detail`, `contact_phone`, `schedule_status`, and `access_hours`. Emergency-room records contain `contact_phone` and `emergency_phone`. Missing values remain SQL NULL. See [field-mapping.md](field-mapping.md) for API-source mappings.
 
-The existing `GET /api/facilities/nearby` contract remains `{ "facilities": [], "count": 0 }`; this migration does not alter the application route or response.
+The `GET /api/facilities/nearby` envelope remains `{ "facilities": [], "count": 0 }` when no rows match. The follow-up migration `20261020140000_nearby_facilities.sql` supplies the read-only spatial RPC used by the backend. It returns distance in meters, filters by facility type, and does not persist the search origin. No walking duration is synthesized. Detail responses include the facility fields and `access_hours`. API timestamps are serialized with the Asia/Seoul offset; weekday access hours are local Seoul wall-clock times.
 
 ## Schema choices
 

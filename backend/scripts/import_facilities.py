@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import random
 import time as time_module
+from uuid import uuid4
 
 try:
     from .supabase_rest import create_supabase_client
@@ -72,15 +73,17 @@ def parse_access_hours(values):
     seen_weekdays = set()
     for value in values:
         try:
-            weekday = int(value["weekday"])
+            weekday = value["weekday"]
             opens_at = time.fromisoformat(value["opens_at"])
             closes_at = time.fromisoformat(value["closes_at"])
             ends_next_day = value["ends_next_day"]
             is_24_hours = value["is_24_hours"]
         except (KeyError, TypeError, ValueError) as error:
             raise RecordError("access_hours contains an invalid entry") from error
-        if not 1 <= weekday <= 7 or weekday in seen_weekdays:
+        if type(weekday) is not int or not 1 <= weekday <= 7 or weekday in seen_weekdays:
             raise RecordError("access_hours weekdays must be unique values from 1 to 7")
+        if opens_at.tzinfo is not None or closes_at.tzinfo is not None:
+            raise RecordError("access_hours uses Seoul wall-clock time without an offset")
         if not isinstance(ends_next_day, bool) or not isinstance(is_24_hours, bool):
             raise RecordError("access_hours flags must be booleans")
         seen_weekdays.add(weekday)
@@ -177,13 +180,23 @@ def build_rpc_record(item):
     return record
 
 
-def upsert_batch(client, batch, *, retries=5):
+def upsert_batch(client, batch, *, retries=5, detailed=False):
     records = [build_rpc_record(item) for item in batch]
+    params = {"p_records": records}
+    if detailed:
+        params["p_request_id"] = str(uuid4())
     for attempt in range(retries):
         try:
             response = client.rpc(
-                "upsert_facility_batch", {"p_records": records}
+                "stage_facility_batch" if detailed else "upsert_facility_batch", params
             ).execute()
+            if detailed:
+                counts = response.data
+                if (not isinstance(counts, dict) or set(counts) != {"inserted", "updated", "held", "unchanged"}
+                        or any(type(n) is not int or n < 0 for n in counts.values())
+                        or sum(counts.values()) != len(batch)):
+                    raise RuntimeError("Invalid guarded import result")
+                return counts
             if not isinstance(response.data, int) or response.data != len(batch):
                 raise RuntimeError("Supabase RPC returned an unexpected row count")
             return response.data
@@ -204,6 +217,10 @@ def import_datasets(client, datasets, *, batch_size=500, error_log=DEFAULT_ERROR
         "upserted_count": 0,
         "failed_count": 0,
         "batch_failed_count": 0,
+        "inserted_count": 0,
+        "updated_count": 0,
+        "held_count": 0,
+        "unchanged_count": 0,
     }
 
     for facility_type, dataset_path in datasets.items():
@@ -214,7 +231,10 @@ def import_datasets(client, datasets, *, batch_size=500, error_log=DEFAULT_ERROR
             if not pending:
                 return
             try:
-                summary["upserted_count"] += upsert_batch(client, pending)
+                counts = upsert_batch(client, pending, detailed=True)
+                for field in ("inserted", "updated", "held", "unchanged"):
+                    summary[field + "_count"] += counts[field]
+                summary["upserted_count"] += counts["inserted"] + counts["updated"]
             except Exception as error:  # noqa: BLE001 - log and continue by batch
                 summary["failed_count"] += len(pending)
                 summary["batch_failed_count"] += 1
@@ -300,6 +320,9 @@ def main():
             summary = dry_run(datasets, batch_size=args.batch_size, error_log=args.error_log)
             print("JSON validation completed without calling Supabase.")
         else:
+            validation = dry_run(datasets, batch_size=args.batch_size, error_log=args.error_log)
+            if validation["failed_count"]:
+                raise RecordError("Source validation failed; no database writes attempted")
             client = create_supabase_client()
             before_response = client.rpc("get_aed_import_stats", {}).execute()
             before_stats = before_response.data
@@ -339,6 +362,8 @@ def main():
     if summary["failed_count"]:
         print(f"Error log: {args.error_log}")
         raise SystemExit(f"{summary['failed_count']} records failed; inspect the error log")
+    if summary.get("held_count"):
+        raise SystemExit("Suspicious changes are pending administrator review; import is not complete")
 
 
 if __name__ == "__main__":

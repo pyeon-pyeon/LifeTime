@@ -1,5 +1,6 @@
 -- LifeTime public facility data. Apply only through a reviewed Supabase migration.
 -- Existing objects are checked and reused; incompatible objects fail explicitly.
+BEGIN;
 
 CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA extensions;
@@ -30,7 +31,7 @@ BEGIN
     IF to_regclass('public.facilities') IS NOT NULL
        AND NOT EXISTS (
            SELECT 1 FROM pg_constraint
-           WHERE conrelid = 'public.facilities'::regclass
+           WHERE conrelid = to_regclass('public.facilities')
              AND contype = 'u'
              AND pg_get_constraintdef(oid) = 'UNIQUE (facility_type, source_id)'
        ) THEN
@@ -343,3 +344,4 @@ GRANT EXECUTE ON FUNCTION public.get_aed_import_stats() TO service_role;
 -- WHERE table_schema = 'public' AND table_name IN ('facilities', 'facility_access_hours');
 
 -- Post-apply checks are documented in docs/database-schema.md.
+COMMIT;

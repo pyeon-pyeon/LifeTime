@@ -1,10 +1,16 @@
-from fastapi import FastAPI, Query
+from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Literal
 from datetime import datetime
+from uuid import UUID
+from .facilities import get_facility_client, nearby_facilities, find_facility
+from .walking import get_walking_provider
+from .recommendations import recommend, get_closure_calendar
+from .admin import router as admin_router
 
 app = FastAPI(title="LifeTime API", version="0.1.0")
+app.include_router(admin_router)
 
 # For development only. Set explicit allowed origins before deployment.
 app.add_middleware(
@@ -32,23 +38,37 @@ class RecommendationRequest(BaseModel):
             raise ValueError("departure_at must include timezone offset")
         return value
 
+class RecommendationItem(BaseModel):
+    facility_id: UUID
+    distance_m: float = Field(ge=0, allow_inf_nan=False)
+    duration_sec: float = Field(ge=0, allow_inf_nan=False)
+    arrival_at: datetime
+    availability: Literal["available", "unavailable", "unknown"]
+
+class RecommendationResponse(BaseModel):
+    recommendations: list[RecommendationItem]
+    count: int
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 @app.get("/api/facilities/nearby")
 def nearby(latitude: float = Query(ge=-90, le=90), longitude: float = Query(ge=-180, le=180),
-           facility_type: FacilityType | None = None, radius_m: int = Query(default=3000, ge=1, le=20000)):
-    # Response contract placeholder; no fabricated real facilities.
-    return {"facilities": [], "count": 0}
+           facility_type: FacilityType | None = None, radius_m: int = Query(default=3000, ge=1, le=20000),
+           client=Depends(get_facility_client)):
+    return nearby_facilities(client, latitude, longitude, facility_type, radius_m)
 
 @app.get("/api/facilities/{id}")
-def facility_detail(id: str):
-    from fastapi import HTTPException
-    raise HTTPException(status_code=404, detail="Facility not found")
+def facility_detail(id: str, client=Depends(get_facility_client)):
+    try:
+        facility_id = UUID(id)
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Facility not found") from None
+    return find_facility(client, facility_id)
 
-@app.post("/api/aeds/recommendations")
-def recommendations(request: RecommendationRequest):
-    # Route API is not yet connected: report unavailable, not a made-up ETA.
-    from fastapi import HTTPException
-    raise HTTPException(status_code=503, detail="Walking route provider not configured")
+@app.post("/api/aeds/recommendations", response_model=RecommendationResponse)
+def recommendations(request: RecommendationRequest, provider=Depends(get_walking_provider),
+                    client=Depends(get_facility_client), calendar=Depends(get_closure_calendar)):
+    return recommend(client, provider, request, calendar=calendar)
