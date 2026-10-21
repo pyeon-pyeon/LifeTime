@@ -1,0 +1,109 @@
+import type { Coordinates } from '../types/location'
+import type { WalkingRoute } from '../types/route'
+
+type KakaoWalkingResponse = {
+  status?: string
+  route?: {
+    properties?: {
+      totalDistance?: number
+      totalTime?: number
+    }
+    legs?: {
+      steps?: {
+        path?: {
+          points?: number[][]
+        }
+      }[]
+    }[]
+  }
+  message?: string
+}
+
+export async function fetchWalkingRoute(
+  origin: Coordinates,
+  destination: Coordinates,
+  signal: AbortSignal,
+): Promise<WalkingRoute> {
+  const params = new URLSearchParams({
+    start_x: String(origin.longitude),
+    start_y: String(origin.latitude),
+    end_x: String(destination.longitude),
+    end_y: String(destination.latitude),
+  })
+
+  const response = await fetch(
+    `/api/dev/walking-route?${params}`,
+    { signal },
+  )
+
+  const body: KakaoWalkingResponse = await response.json()
+
+  if (!response.ok) {
+    throw new Error(body.message ?? '경로 조회에 실패했습니다.')
+  }
+
+  if (body.status !== 'OK' || !body.route) {
+    const messages: Record<string, string> = {
+      SAME_POINT: '출발지와 도착지가 같습니다.',
+      START_LINK_NOT_FOUND: '출발지 주변 보행 경로를 찾지 못했습니다.',
+      END_LINK_NOT_FOUND: '도착지 주변 보행 경로를 찾지 못했습니다.',
+      TOO_FAR_AWAY: '출발지와 도착지가 너무 멉니다.',
+      TOO_MANY_SEARCH_LINK: '경로 탐색 범위를 초과했습니다.',
+      ROUTE_RESULT_NOT_FOUND: '이동 가능한 보행 경로를 찾지 못했습니다.',
+    }
+
+    throw new Error(
+      messages[body.status ?? ''] ?? '도보 경로를 확인하지 못했습니다.',
+    )
+  }
+
+  const distanceM = body.route.properties?.totalDistance
+  const durationSec = body.route.properties?.totalTime
+
+  if (
+    typeof distanceM !== 'number' ||
+    typeof durationSec !== 'number' ||
+    !Number.isFinite(distanceM) ||
+    !Number.isFinite(durationSec) ||
+    distanceM < 0 ||
+    durationSec < 0
+  ) {
+    throw new Error('경로 거리·시간 정보가 올바르지 않습니다.')
+  }
+
+  const segments: WalkingRoute['segments'] = []
+
+  for (const leg of body.route.legs ?? []) {
+    for (const step of leg.steps ?? []) {
+      const points = step.path?.points
+
+      if (!points || points.length < 2) continue
+
+      const segment: [number, number][] = []
+
+      for (const point of points) {
+        const [longitude, latitude] = point
+
+        if (
+          point.length !== 2 ||
+          !Number.isFinite(longitude) ||
+          !Number.isFinite(latitude) ||
+          Math.abs(longitude) > 180 ||
+          Math.abs(latitude) > 90
+        ) {
+          throw new Error('경로 좌표 정보가 올바르지 않습니다.')
+        }
+
+        segment.push([longitude, latitude])
+      }
+
+      segments.push(segment)
+    }
+  }
+
+  if (segments.length === 0) {
+    throw new Error('표시할 경로 좌표가 없습니다.')
+  }
+
+  return { distanceM, durationSec, segments }
+}
