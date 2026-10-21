@@ -12,7 +12,11 @@ import type { FacilityFilter } from './types/facility'
 import type { Coordinates } from './types/location'
 import './App.css'
 
-const SEARCH_RADIUS_M = 3000
+const SEARCH_RADIUS_BY_FILTER: Record<FacilityFilter, number> = {
+  all: 500,
+  aed: 500,
+  emergency_room: 15000,
+}
 
 function App() {
   const [filter, setFilter] = useState<FacilityFilter>('all')
@@ -45,10 +49,12 @@ function App() {
     location.refresh()
   }
 
+  const searchRadiusM = SEARCH_RADIUS_BY_FILTER[filter]
+
   const nearby = useNearbyFacilities(
     searchLocation,
     filter,
-    SEARCH_RADIUS_M,
+    searchRadiusM,
   )
 
   const visibleFacilities = nearby.facilities.filter((facility) =>
