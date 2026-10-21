@@ -1,17 +1,16 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import Header from './components/Header'
 import FacilityMap from './components/FacilityMap'
 import FacilityExplorer from './components/FacilityExplorer'
 import FacilityDetail from './components/FacilityDetail'
 import Toast from './components/Toast'
 import { useGeolocation } from './hooks/useGeolocation'
-import type { FacilityFilter } from './types/facility'
-import './App.css'
-import type { Coordinates } from './types/location'
 import { useWalkingRoute } from './hooks/useWalkingRoute'
 import { useNearbyFacilities } from './hooks/useNearbyFacilities'
 import { useWalkingRanking } from './hooks/useWalkingRanking'
-
+import type { FacilityFilter } from './types/facility'
+import type { Coordinates } from './types/location'
+import './App.css'
 
 const SEARCH_RADIUS_M = 3000
 
@@ -21,26 +20,28 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
 
-  const location = useGeolocation()
   const [customSearchLocation, setCustomSearchLocation] =
-  useState<Coordinates | null>(null)
+    useState<Coordinates | null>(null)
 
-  const [editingLocation, setEditingLocation] = useState(false)
+  const location = useGeolocation()
 
-  // 수동 설정이 있으면 그 위치, 없으면 현재 위치 사용
-  const searchLocation = customSearchLocation ?? location.coordinates
+  // 최초에는 현재 위치, 지도 드래그 후에는 선택한 위치 사용
+  const searchLocation =
+    customSearchLocation ?? location.coordinates
 
-  function confirmSearchLocation(coordinates: Coordinates) {
-    setCustomSearchLocation(coordinates)
-    setEditingLocation(false)
-    setSelectedId(null)
-    setMessage('선택한 위치를 기준으로 주변 시설을 검색합니다.')
-  }
+  const handleSearchLocationChange = useCallback(
+    (coordinates: Coordinates) => {
+      setCustomSearchLocation(coordinates)
+      setSelectedId(null)
+      setMessage('')
+    },
+    [],
+  )
 
   function useCurrentLocation() {
     setCustomSearchLocation(null)
-    setEditingLocation(false)
     setSelectedId(null)
+    setMessage('')
     location.refresh()
   }
 
@@ -56,14 +57,14 @@ function App() {
       .includes(query.trim().toLowerCase()),
   )
 
-  // nearby.facilities는 앞서 직선거리순으로 정렬한 API 결과
-  // 검색어로 좁힌 결과 중 최대 5개를 비교
+  // 직선거리순 목록에서 최대 5곳을 경로 비교 후보로 선정
   const comparisonCandidates = visibleFacilities.slice(0, 5)
 
+  // AED는 도보, 응급실은 차량 이동시간 비교
   const ranking = useWalkingRanking(
     searchLocation,
     comparisonCandidates,
-    filter !== 'all' && !editingLocation,
+    filter !== 'all',
   )
 
   const topThree = ranking.results.slice(0, 3)
@@ -81,11 +82,13 @@ function App() {
   const selectedFacility = visibleFacilities.find(
     (facility) => facility.id === selectedId,
   )
+
   const walking = useWalkingRoute(
     searchLocation,
-    editingLocation ? undefined : selectedFacility,
+    selectedFacility,
   )
-  // 비교 과정에서 계산한 경로는 상세 화면에서도 재사용
+
+  // 비교 과정에서 계산한 경로를 상세 화면에서도 재사용
   const comparedRoute = ranking.results.find(
     (item) => item.facilityId === selectedFacility?.id,
   )?.route
@@ -102,18 +105,9 @@ function App() {
     setSelectedId(null)
   }
 
-  const locationDescription = customSearchLocation
-    ? '직접 선택한 위치 기준 · 반경 3km'
-    : location.status === 'loading'
-      ? '현재 위치를 확인하고 있습니다.'
-      : location.status === 'error'
-        ? location.error ?? '현재 위치를 확인하지 못했습니다.'
-        : `현재 위치 기준 반경 3km · 위치 정확도 약 ${Math.round(
-            location.accuracy ?? 0,
-          )}m`
 
   return (
-    <main className={`app-shell ${editingLocation ? 'editing-location' : ''}`}>
+    <main className="app-shell">
       <FacilityMap
         facilities={visibleFacilities}
         selectedId={selectedId}
@@ -121,12 +115,10 @@ function App() {
         walkingRanks={walkingRanks}
         currentLocation={location.coordinates}
         searchLocation={searchLocation}
-        editingLocation={editingLocation}
         locating={location.status === 'loading'}
         onSelect={setSelectedId}
         onLocate={useCurrentLocation}
-        onConfirmLocation={confirmSearchLocation}
-        onCancelEdit={() => setEditingLocation(false)}
+        onSearchLocationChange={handleSearchLocationChange}
       />
 
       <Header />
@@ -144,10 +136,10 @@ function App() {
         onSelect={setSelectedId}
         walkingRanks={walkingRanks}
         comparisonEnabled={
+          searchLocation !== null &&
           filter !== 'all' &&
           nearby.status === 'success' &&
-          comparisonCandidates.length > 0 &&
-          !editingLocation
+          comparisonCandidates.length > 0
         }
         comparisonLoading={ranking.loading}
         comparisonDone={ranking.done}
@@ -161,44 +153,6 @@ function App() {
           }
         }}
       />
-
-      {!editingLocation && (
-        <div
-          className={`location-status ${
-            !customSearchLocation && location.status === 'error'
-              ? 'is-error'
-              : ''
-          }`}
-          role="status"
-        >
-          <span>{locationDescription}</span>
-
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedId(null)
-              setEditingLocation(true)
-            }}
-          >
-            위치 수정
-          </button>
-
-          {customSearchLocation && (
-            <button
-              type="button"
-              onClick={useCurrentLocation}
-            >
-              현재 위치 사용
-            </button>
-          )}
-
-          {!customSearchLocation && location.status === 'error' && (
-            <button type="button" onClick={useCurrentLocation}>
-              다시 시도
-            </button>
-          )}
-        </div>
-      )}
 
       {selectedFacility && (
         <FacilityDetail
