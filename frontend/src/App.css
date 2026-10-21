@@ -1884,3 +1884,131 @@ input {
   --text-heading: #243447;
   --text-body: #374151;
 }
+
+.map-center-target {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 35;
+  width: 30px;
+  height: 38px;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+
+/* 핀 몸체 */
+.map-center-target::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 1px;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 2px solid #243447;
+  border-radius: 50% 50% 50% 6px;
+  background: #fffdf8;
+  box-shadow: 2px 3px 8px rgba(36, 52, 71, 0.16);
+  transform: rotate(-45deg);
+}
+
+/* 핀 가운데 점 */
+.map-center-target-dot {
+  position: absolute;
+  top: 9px;
+  left: 11px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #147d64;
+}
+
+/* 실제 선택 지점을 표시하는 그림자 */
+.map-center-target::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 9px;
+  width: 12px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(36, 52, 71, 0.2);
+  filter: blur(1px);
+}
+
+@media (max-width: 700px) {
+  .map-center-target {
+    top: 26.5%;
+  }
+}
+
+.filter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.filter-row .filter-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 10px 6px;
+  border: 1px solid #e2e5e8;
+  border-radius: 13px;
+  background: #fffdf8;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.filter-tab-icon {
+  flex-shrink: 0;
+}
+
+.filter-button.aed .filter-tab-icon {
+  color: #c83145;
+}
+
+.filter-button.emergency_room .filter-tab-icon {
+  color: #147d64;
+}
+
+.filter-row .filter-button:hover {
+  border-color: #aeb8c2;
+}
+
+.filter-row .filter-button.all[aria-pressed='true'] {
+  background: #243447;
+  border-color: #243447;
+  color: #fff;
+}
+
+.filter-row .filter-button.aed[aria-pressed='true'] {
+  background: #c83145;
+  border-color: #c83145;
+  color: #fff;
+}
+
+.filter-row .filter-button.emergency_room[aria-pressed='true'] {
+  background: #147d64;
+  border-color: #147d64;
+  color: #fff;
+}
+
+.filter-row .filter-button[aria-pressed='true'] .filter-tab-icon {
+  color: inherit;
+}
+
+.filter-row .filter-button:focus-visible {
+  outline: 3px solid #243447;
+  outline-offset: 3px;
+}

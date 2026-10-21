@@ -6,7 +6,7 @@ import Icon from './Icon'
 import FacilityStatus from './FacilityStatus'
 import type { FacilityLoadStatus } from '../hooks/useNearbyFacilities'
 import type { WalkingRanks } from '../types/ranking'
-
+import { LayoutGrid, HeartPulse, Cross } from 'lucide-react'
 
 type FacilityExplorerProps = {
   facilities: (Facility & { straightDistanceM: number })[]
@@ -30,11 +30,19 @@ type FacilityExplorerProps = {
   onSelect: (id: string) => void
 }
 
-const filters: { value: FacilityFilter; label: string }[] = [
-  { value: 'all', label: '전체 시설' },
-  { value: 'aed', label: 'AED' },
-  { value: 'emergency_room', label: '응급실' },
-]
+const filters = [
+  { value: 'all', label: '전체', icon: LayoutGrid },
+  { value: 'aed', label: 'AED', icon: HeartPulse },
+  {
+    value: 'emergency_room',
+    label: '응급실',
+    icon: Cross,
+  },
+] satisfies {
+  value: FacilityFilter
+  label: string
+  icon: typeof LayoutGrid
+}[]
 
 export default function FacilityExplorer({
   facilities,
@@ -100,19 +108,22 @@ export default function FacilityExplorer({
         )}
       </label>
 
-      <div className="filter-row" role="group" aria-label="시설 종류">
-        {filters.map(({ value, label }) => (
+      <div className="filter-row" role="group" aria-label="응급시설 종류 선택">
+        {filters.map(({ value, label, icon: TabIcon }) => (
           <button
             key={value}
             type="button"
-            className="filter-button"
+            className={`filter-button ${value}`}
             aria-pressed={filter === value}
             onClick={() => onFilterChange(value)}
           >
-            {value !== 'all' && (
-              <span className={`filter-dot ${value}`} />
-            )}
-            {label}
+            <TabIcon
+              className="filter-tab-icon"
+              size={20}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <span>{label}</span>
           </button>
         ))}
       </div>
