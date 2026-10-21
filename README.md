@@ -120,7 +120,7 @@ py -3.12 -m venv .venv
 
 ```powershell
 if (-not (Test-Path backend/.env)) { Copy-Item backend/.env.example backend/.env }
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --env-file backend\.env --reload --host 127.0.0.1 --port 8000
 ```
 
 API 문서는 `http://127.0.0.1:8000/docs`, 서버 상태는 `/health`에서 확인한다.

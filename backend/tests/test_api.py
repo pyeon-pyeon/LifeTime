@@ -99,11 +99,13 @@ def test_detail_found_and_missing(database):
 @pytest.mark.parametrize('path', [
     '/api/facilities/nearby?latitude=37.5&longitude=127',
     '/api/facilities/00000000-0000-0000-0000-000000000001'])
-def test_database_failure_is_sanitized(database, path):
+def test_database_failure_is_sanitized(database, path, caplog):
     database.error = True
     response = client.get(path)
     assert response.status_code == 503
     assert response.json() == {'detail': 'Facility database unavailable'}
+    assert 'RuntimeError' in caplog.text
+    assert 'secret-test-must-not-leak' not in caplog.text
 
 
 def test_missing_configuration_is_503(monkeypatch):
