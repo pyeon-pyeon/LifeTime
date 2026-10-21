@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       {
-        name: 'local-walking-route',
+        name: 'local-facility-route',
         configureServer(server) {
           server.middlewares.use(async (req, res, next) => {
             const url = new URL(
@@ -16,7 +16,10 @@ export default defineConfig(({ mode }) => {
               'http://localhost',
             )
 
-            if (url.pathname !== '/api/dev/walking-route') {
+            const isDriving = url.pathname === '/api/dev/driving-route'
+            const isWalking = url.pathname === '/api/dev/walking-route'
+
+            if (!isDriving && !isWalking) {
               next()
               return
             }
@@ -68,15 +71,25 @@ export default defineConfig(({ mode }) => {
             }
 
             const upstream = new URL(
-              'https://dapi.kakao.com/v2/routing/walk',
+              isDriving
+                ? 'https://apis-navi.kakaomobility.com/v1/directions'
+                : 'https://dapi.kakao.com/v2/routing/walk',
             )
 
-            names.forEach((name, index) => {
-              upstream.searchParams.set(name, String(values[index]))
-            })
+            if (isDriving) {
+              upstream.searchParams.set('origin', `${values[0]},${values[1]}`)
+              upstream.searchParams.set('destination', `${values[2]},${values[3]}`)
+              upstream.searchParams.set('priority', 'TIME')
+              upstream.searchParams.set('summary', 'false')
+              upstream.searchParams.set('alternatives', 'false')
+            } else {
+              names.forEach((name, index) => {
+                upstream.searchParams.set(name, String(values[index]))
+              })
 
-            upstream.searchParams.set('input_coord', 'WGS84')
-            upstream.searchParams.set('output_coord', 'WGS84')
+              upstream.searchParams.set('input_coord', 'WGS84')
+              upstream.searchParams.set('output_coord', 'WGS84')
+            }
 
             try {
               const response = await fetch(upstream, {

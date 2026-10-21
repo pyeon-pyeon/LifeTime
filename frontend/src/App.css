@@ -1333,3 +1333,554 @@
   font-size: 12px;
   line-height: 1.7;
 }
+
+.facility-retry-button {
+  margin-top: 17px;
+  padding: 10px 17px;
+  border: 1px solid #d6e1cf;
+  border-radius: 11px;
+  background: #f0f5e9;
+  color: #31523d;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.facility-retry-button:hover {
+  background: #e5eddc;
+}
+
+.empty-results p {
+  line-height: 1.8;
+}
+
+/* 시설 마커: 기본은 작은 아이콘 */
+.kakao-facility-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  gap: 6px;
+  transform: none;
+}
+
+.kakao-facility-marker .marker-symbol {
+  width: 30px;
+  height: 30px;
+  border: 2px solid white;
+  border-radius: 11px 11px 11px 4px;
+  background: #267653;
+  box-shadow: 0 2px 7px #203e3226;
+  font-size: 21px;
+  line-height: 1;
+  transition:
+    width 150ms ease,
+    height 150ms ease,
+    background 150ms ease;
+}
+
+.kakao-facility-marker.emergency_room .marker-symbol {
+  background: #b9564a;
+}
+
+/* 기존 hover 이동 효과 제거 */
+.kakao-facility-marker:hover .marker-symbol {
+  transform: none;
+  outline: 3px solid #26765318;
+}
+
+.kakao-facility-marker.emergency_room:hover .marker-symbol {
+  outline-color: #b9564a18;
+}
+
+/* 선택한 시설은 크게 강조 */
+.kakao-facility-marker.selected .marker-symbol {
+  width: 40px;
+  height: 40px;
+  font-size: 27px;
+  transform: none;
+  outline: 5px solid #26765320;
+  box-shadow: 0 4px 12px #203e3230;
+}
+
+.kakao-facility-marker.selected.emergency_room .marker-symbol {
+  outline-color: #b9564a20;
+}
+
+/* 이름은 아이콘 아래에 띄워 마커 위치가 흔들리지 않게 배치 */
+.kakao-facility-marker .marker-label {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  max-width: 220px;
+  padding: 7px 10px;
+  overflow: hidden;
+  border: 1px solid #dce5d8;
+  border-radius: 9px;
+  background: #fffffff7;
+  color: #294635;
+  box-shadow: 0 4px 14px #203e321a;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kakao-facility-marker .marker-symbol {
+    transition: none;
+  }
+}
+
+
+/* 기본적으로 시설명 숨김 */
+.kakao-facility-marker .marker-label {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 호버·키보드 포커스·선택 시 표시 */
+.kakao-facility-marker:hover .marker-label,
+.kakao-facility-marker:focus-visible .marker-label{
+  opacity: 1;
+  visibility: visible;
+}
+
+/* AED 이미지 마커 */
+.kakao-facility-marker.aed .marker-symbol {
+  padding: 0;
+  overflow: hidden;
+  background: white;
+}
+
+.kakao-facility-marker .marker-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: inherit;
+}
+
+
+.walking-comparison {
+  flex-shrink: 0;
+  margin-top: 16px;
+}
+
+.walking-compare-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid #d1deca;
+  border-radius: 12px;
+  background: #edf3e6;
+  color: #31543b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.walking-compare-button:hover:not(:disabled) {
+  background: #e1ecd8;
+}
+
+.walking-compare-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.walking-compare-note {
+  margin-top: 8px;
+  color: #63715f;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.facility-card.is-walking-top {
+  border-color: #9cb58d;
+  background: #f6f9f0;
+}
+
+.walking-rank-badge {
+  display: inline-flex;
+  margin-top: 9px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: #e2ecd5;
+  color: #375431;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+/* 이미지 아이콘도 유지하면서 바깥쪽으로 강조 */
+.kakao-facility-marker.is-walking-top .marker-symbol {
+  outline: 3px solid #72965855;
+  box-shadow: 0 3px 12px #34532930;
+}
+
+.map-walking-rank {
+  position: absolute;
+  z-index: 2;
+  top: -3px;
+  right: -4px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #31543b;
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.access-hours-list {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.access-hours-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.access-hours-list li strong {
+  text-align: right;
+}
+
+.detail-fetch-error {
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.detail-fetch-error button {
+  padding: 6px 10px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.emergency-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #efd9d5;
+  border-radius: 16px;
+  background: #fff5f2;
+}
+
+.emergency-callout-copy {
+  min-width: 0;
+}
+
+.emergency-callout-copy strong {
+  display: block;
+  color: #803c34;
+  font-size: 13px;
+}
+
+.emergency-callout-copy p {
+  margin: 5px 0 0;
+  color: #765f59;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.emergency-call-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: #a34236;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.emergency-call-button:hover {
+  background: #88362c;
+}
+
+.emergency-call-button:focus-visible {
+  outline: 3px solid #a34236;
+  outline-offset: 3px;
+}
+
+.topbar {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  bottom: auto;
+  left: auto;
+  width: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(32, 65, 51, 0.1);
+  border-radius: 20px;
+  background: rgba(255, 253, 248, 0.96);
+  box-shadow: 0 8px 28px rgba(32, 65, 51, 0.08);
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.topbar .brand {
+  position: static;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.topbar .emergency-call-button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .topbar {
+    top: 12px;
+    right: 12px;
+    left: auto;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 16px;
+  }
+
+  .topbar .brand {
+    font-size: 20px;
+  }
+
+  .topbar .emergency-call-button {
+    padding: 0 12px;
+  }
+}
+
+/* 데스크톱: 헤더와 위쪽 정렬, 위아래 여백 유지 */
+@media (min-width: 701px) {
+  .explorer {
+    top: 24px;
+    bottom: 24px;
+    left: 24px;
+    height: auto;
+    max-height: none;
+    margin: 0;
+    border-radius: 24px;
+  }
+}
+
+.topbar .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo {
+  display: block;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  object-fit: contain;
+  transform: scale(1.15);
+}
+
+@media (max-width: 700px) {
+  .brand-logo {
+    width: 36px;
+    height: 36px;
+    transform: scale(1.15);
+  }
+}
+
+/* 기본 글자와 입력 요소 */
+body {
+  font-size: 16px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+/* 왼쪽 패널 */
+.explorer .eyebrow {
+  font-size: 12px;
+}
+
+.explorer .intro-description {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.explorer .search-box input,
+.explorer .filter-button {
+  font-size: 15px;
+}
+
+.explorer .list-heading h2 {
+  font-size: 18px;
+}
+
+.explorer .list-heading > span {
+  font-size: 13px;
+}
+
+/* 시설 카드 */
+.facility-card h3 {
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.facility-category,
+.walking-rank-badge {
+  font-size: 13px;
+}
+
+.facility-address {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.card-bottom {
+  font-size: 14px;
+}
+
+/* 비교 버튼과 안내 */
+.walking-compare-button {
+  font-size: 15px;
+}
+
+.walking-compare-note,
+.panel-footer {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 시설 상세 */
+.detail-sheet h2 {
+  font-size: 23px;
+  line-height: 1.4;
+}
+
+.detail-address {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.detail-facts > div > span,
+.route-summary span {
+  font-size: 14px;
+}
+
+.detail-facts strong,
+.detail-facts a {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.route-button {
+  font-size: 16px;
+}
+
+.route-summary strong {
+  font-size: 22px;
+}
+
+.detail-notice {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 현재 위치 안내와 지도 라벨 */
+.location-status,
+.location-status button {
+  font-size: 14px;
+}
+
+.marker-label {
+  font-size: 14px;
+}
+
+/* 오른쪽 상단 헤더 */
+.topbar .brand {
+  font-size: 26px;
+}
+
+.topbar .emergency-call-button {
+  font-size: 15px;
+}
+
+@media (max-width: 700px) {
+  .topbar .brand {
+    font-size: 23px;
+  }
+}
+
+.location-status {
+  position: absolute;
+  top: 24px;
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  z-index: 40;
+}
+
+/* AED 선택 상태 */
+.filter-button[aria-pressed='true']:has(.filter-dot.aed) {
+  background: #c83145;
+  border-color: #c83145;
+  color: #fff;
+}
+
+/* 응급실 선택 상태 */
+.filter-button[aria-pressed='true']:has(.filter-dot.emergency_room) {
+  background: #147d64;
+  border-color: #147d64;
+  color: #fff;
+}
+
+/* 선택된 버튼 안의 점 */
+.filter-button[aria-pressed='true'] .filter-dot {
+  background: currentColor;
+}
+
+/* 키보드 포커스 */
+.filter-button:has(.filter-dot.aed):focus-visible {
+  outline: 3px solid #c83145;
+  outline-offset: 3px;
+}
+
+.filter-button:has(.filter-dot.emergency_room):focus-visible {
+  outline: 3px solid #147d64;
+  outline-offset: 3px;
+}
+
+:root {
+  --text-heading: #243447;
+  --text-body: #374151;
+}
