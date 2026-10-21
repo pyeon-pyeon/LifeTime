@@ -43,12 +43,13 @@ def test_normalize_aed_preserves_hours_and_extra_fields():
         "gugun": None,
         "access_hours": [
             {
-                "weekday": 1,
+                "weekday": weekday,
                 "opens_at": "00:00",
                 "closes_at": "00:00",
                 "ends_next_day": True,
                 "is_24_hours": True,
             }
+            for weekday in range(1, 8)
         ],
     }
 
@@ -58,6 +59,7 @@ def test_normalize_aed_preserves_hours_and_extra_fields():
     assert normalized["facility"]["installation_detail"] == "1층 로비"
     assert normalized["facility"]["data_collected_at"].utcoffset() == timezone.utc.utcoffset(None)
     assert normalized["access_hours"][0]["opens_at"] == time(0, 0)
+    assert len(normalized["access_hours"]) == 7
     assert normalized["access_hours"][0]["is_24_hours"] is True
 
 

@@ -7,6 +7,9 @@ from pathlib import Path
 import random
 import time as time_module
 from uuid import uuid4
+from pydantic import ValidationError
+
+from facility_validation import normalize_facility_record
 
 try:
     from .supabase_rest import create_supabase_client
@@ -100,44 +103,19 @@ def parse_access_hours(values):
 
 
 def normalize_record(record, expected_type):
-    if not isinstance(record, dict):
-        raise RecordError("record must be a JSON object")
     if expected_type not in {"aed", "emergency_room"}:
         raise RecordError("unsupported facility type")
-    if record.get("facility_type") != expected_type:
-        raise RecordError("facility_type does not match the input dataset")
-
-    source_id = record.get("source_id")
-    if not isinstance(source_id, str) or not source_id.strip():
-        raise RecordError("source_id is required")
-
-    facility = {
-        "facility_type": expected_type,
-        "source_id": source_id.strip(),
-        "name": parse_optional_text(record, "name"),
-        "address": parse_optional_text(record, "address"),
-        "latitude": parse_coordinate(record.get("latitude"), "latitude", -90, 90),
-        "longitude": parse_coordinate(record.get("longitude"), "longitude", -180, 180),
-        "source_updated_at": parse_optional_timestamp(
-            record.get("source_updated_at"), "source_updated_at"
-        ),
-        "data_collected_at": parse_optional_timestamp(
-            record.get("data_collected_at"), "data_collected_at"
-        ),
-        "source_name": parse_optional_text(record, "source_name"),
-        "contact_phone": parse_optional_text(record, "contact_phone"),
-        "emergency_phone": parse_optional_text(record, "emergency_phone"),
-        "installation_detail": parse_optional_text(record, "installation_detail"),
-        "schedule_status": parse_optional_text(record, "schedule_status"),
-        "sido": parse_optional_text(record, "sido"),
-        "gugun": parse_optional_text(record, "gugun"),
-    }
-    if facility["schedule_status"] not in {None, "known", "partial", "unknown"}:
-        raise RecordError("schedule_status is not supported")
-    return {
-        "facility": facility,
-        "access_hours": parse_access_hours(record.get("access_hours")),
-    }
+    try:
+        normalized = normalize_facility_record(record, expected_type)
+    except (ValidationError, TypeError, ValueError):
+        # Pydantic errors include the rejected input. Never copy that into import logs.
+        raise RecordError("record does not match the facility schema") from None
+    facility = {key: value for key, value in normalized.items() if key != "access_hours"}
+    return {"facility": facility, "access_hours": parse_access_hours([
+        {**hour, "opens_at": hour["opens_at"].isoformat(),
+         "closes_at": hour["closes_at"].isoformat()}
+        for hour in normalized["access_hours"]
+    ])}
 
 
 def load_dataset(path):
