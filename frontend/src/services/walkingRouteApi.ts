@@ -1,6 +1,5 @@
 import type { Coordinates } from '../types/location'
 import type { WalkingRoute } from '../types/route'
-import { fetchRateLimited } from './rateLimit.js'
 
 type KakaoWalkingResponse = {
   status?: string
@@ -32,7 +31,7 @@ export async function fetchWalkingRoute(
     end_y: String(destination.latitude),
   })
 
-  const response = await fetchRateLimited(
+  const response = await fetch(
     `/api/dev/walking-route?${params}`,
     { signal },
   )
@@ -138,7 +137,7 @@ export async function fetchDrivingRoute(
     end_y: String(destination.latitude),
   })
 
-  const response = await fetchRateLimited(
+  const response = await fetch(
     `/api/dev/driving-route?${params}`,
     { signal },
   )

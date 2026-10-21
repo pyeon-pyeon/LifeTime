@@ -45,7 +45,7 @@ def database(monkeypatch):
     yield fake
     app.dependency_overrides.clear()
 
-client = TestClient(app, client=("127.0.0.1", 12345))
+client = TestClient(app)
 
 def test_health():
     assert client.get('/health').json() == {'status': 'ok'}

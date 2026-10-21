@@ -1,7 +1,4 @@
 import json
-from pathlib import Path
-
-from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -15,7 +12,6 @@ from .walking import get_walking_provider
 from .recommendations import recommend, get_closure_calendar
 from .admin import router as admin_router
 from .routes_proxy import router as routes_proxy_router
-from .rate_limit import RateLimitMiddleware, policy_and_store_from_env
 
 JSON_BODY_LIMIT_BYTES = 256 * 1024
 MAX_JSON_NESTING = 64
@@ -106,11 +102,6 @@ class BoundedJSONBodyMiddleware:
 
 app = FastAPI(title="LifeTime API", version="0.1.0")
 app.add_middleware(BoundedJSONBodyMiddleware)
-load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
-app.state.rate_limit_policy, app.state.rate_limit_store, app.state.rate_limit_config_error = (
-    policy_and_store_from_env()
-)
-app.add_middleware(RateLimitMiddleware, runtime_state=app.state)
 
 
 @app.exception_handler(RequestValidationError)
@@ -134,7 +125,6 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
-    expose_headers=["Retry-After", "X-RateLimit-Source"],
 )
 
 FacilityType = Literal["aed", "emergency_room"]
