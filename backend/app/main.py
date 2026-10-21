@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -103,6 +106,7 @@ class BoundedJSONBodyMiddleware:
 
 app = FastAPI(title="LifeTime API", version="0.1.0")
 app.add_middleware(BoundedJSONBodyMiddleware)
+load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 app.state.rate_limit_policy, app.state.rate_limit_store, app.state.rate_limit_config_error = (
     policy_and_store_from_env()
 )

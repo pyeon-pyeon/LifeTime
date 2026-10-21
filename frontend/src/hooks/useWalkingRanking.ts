@@ -6,6 +6,7 @@ import {
   fetchWalkingRoute,
   fetchDrivingRoute,
 } from '../services/walkingRouteApi'
+import { RateLimitError } from '../services/rateLimit.js'
 export type RankedFacility = {
   facilityId: string
   route: WalkingRoute
@@ -13,7 +14,7 @@ export type RankedFacility = {
 
 type RankingState = {
   key: string
-  status: 'loading' | 'success'
+  status: 'loading' | 'success' | 'rate_limited'
   completed: number
   results: RankedFacility[]
   failedIds: string[]
@@ -106,8 +107,19 @@ export function useWalkingRanking(
             facilityId: facility.id,
             route,
           })
-        } catch {
+        } catch (error) {
           if (controller.signal.aborted) return
+          if (error instanceof RateLimitError) {
+            controller.abort()
+            setState({
+              key,
+              status: 'rate_limited',
+              completed: 0,
+              results: [],
+              failedIds: [],
+            })
+            return
+          }
           failedIds.push(facility.id)
         }
 
