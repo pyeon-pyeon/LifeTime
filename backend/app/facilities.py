@@ -1,6 +1,7 @@
 """Read facilities from Supabase; never expose SDK errors or credentials."""
 
 from datetime import datetime
+import logging
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
@@ -8,10 +9,14 @@ from fastapi import HTTPException
 from scripts.supabase_rest import create_supabase_client
 
 
+logger = logging.getLogger(__name__)
+
+
 def get_facility_client():
     try:
         return create_supabase_client()
-    except Exception:
+    except Exception as exc:
+        logger.error("facility_database_client_unavailable error_type=%s", type(exc).__name__)
         raise HTTPException(503, "Facility database unavailable") from None
 
 
@@ -36,7 +41,8 @@ def nearby_facilities(client, latitude, longitude, facility_type, radius_m):
         }).execute()
         rows = [serialize_facility(row) for row in response.data]
         return {"facilities": rows, "count": len(rows)}
-    except Exception:
+    except Exception as exc:
+        logger.error("facility_nearby_query_failed error_type=%s", type(exc).__name__)
         raise HTTPException(503, "Facility database unavailable") from None
 
 
@@ -47,7 +53,8 @@ def find_facility(client, facility_id):
         ).eq("id", str(facility_id)).limit(1).execute()
         rows = response.data
         result = serialize_facility(rows[0]) if rows else None
-    except Exception:
+    except Exception as exc:
+        logger.error("facility_detail_query_failed error_type=%s", type(exc).__name__)
         raise HTTPException(503, "Facility database unavailable") from None
     if result is None:
         raise HTTPException(404, "Facility not found")

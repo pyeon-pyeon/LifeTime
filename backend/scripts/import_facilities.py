@@ -7,6 +7,9 @@ from pathlib import Path
 import random
 import time as time_module
 from uuid import uuid4
+from pydantic import ValidationError
+
+from facility_validation import normalize_facility_record
 
 try:
     from .supabase_rest import create_supabase_client
@@ -100,44 +103,19 @@ def parse_access_hours(values):
 
 
 def normalize_record(record, expected_type):
-    if not isinstance(record, dict):
-        raise RecordError("record must be a JSON object")
     if expected_type not in {"aed", "emergency_room"}:
         raise RecordError("unsupported facility type")
-    if record.get("facility_type") != expected_type:
-        raise RecordError("facility_type does not match the input dataset")
-
-    source_id = record.get("source_id")
-    if not isinstance(source_id, str) or not source_id.strip():
-        raise RecordError("source_id is required")
-
-    facility = {
-        "facility_type": expected_type,
-        "source_id": source_id.strip(),
-        "name": parse_optional_text(record, "name"),
-        "address": parse_optional_text(record, "address"),
-        "latitude": parse_coordinate(record.get("latitude"), "latitude", -90, 90),
-        "longitude": parse_coordinate(record.get("longitude"), "longitude", -180, 180),
-        "source_updated_at": parse_optional_timestamp(
-            record.get("source_updated_at"), "source_updated_at"
-        ),
-        "data_collected_at": parse_optional_timestamp(
-            record.get("data_collected_at"), "data_collected_at"
-        ),
-        "source_name": parse_optional_text(record, "source_name"),
-        "contact_phone": parse_optional_text(record, "contact_phone"),
-        "emergency_phone": parse_optional_text(record, "emergency_phone"),
-        "installation_detail": parse_optional_text(record, "installation_detail"),
-        "schedule_status": parse_optional_text(record, "schedule_status"),
-        "sido": parse_optional_text(record, "sido"),
-        "gugun": parse_optional_text(record, "gugun"),
-    }
-    if facility["schedule_status"] not in {None, "known", "partial", "unknown"}:
-        raise RecordError("schedule_status is not supported")
-    return {
-        "facility": facility,
-        "access_hours": parse_access_hours(record.get("access_hours")),
-    }
+    try:
+        normalized = normalize_facility_record(record, expected_type)
+    except (ValidationError, TypeError, ValueError):
+        # Pydantic errors include the rejected input. Never copy that into import logs.
+        raise RecordError("record does not match the facility schema") from None
+    facility = {key: value for key, value in normalized.items() if key != "access_hours"}
+    return {"facility": facility, "access_hours": parse_access_hours([
+        {**hour, "opens_at": hour["opens_at"].isoformat(),
+         "closes_at": hour["closes_at"].isoformat()}
+        for hour in normalized["access_hours"]
+    ])}
 
 
 def load_dataset(path):
@@ -301,20 +279,43 @@ def dry_run(datasets, *, batch_size=500, error_log=DEFAULT_ERROR_LOG):
     return summary
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--aed-json", type=Path, default=DEFAULT_DATASETS["aed"])
     parser.add_argument("--medical-json", type=Path)
+    parser.add_argument(
+        "--only-medical",
+        action="store_true",
+        help="Validate or import only the emergency room dataset",
+    )
     parser.add_argument("--error-log", type=Path, default=DEFAULT_ERROR_LOG)
-    args = parser.parse_args()
+    return parser
+
+
+def resolve_datasets(args):
+    if getattr(args, "only_medical", False):
+        if not getattr(args, "medical_json", None):
+            raise RecordError("--only-medical requires --medical-json")
+        return {"emergency_room": args.medical_json}
+
+    datasets = {"aed": args.aed_json}
+    if getattr(args, "medical_json", None):
+        datasets["emergency_room"] = args.medical_json
+    return datasets
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
     if args.batch_size < 1:
         raise SystemExit("--batch-size must be at least 1")
 
-    datasets = {"aed": args.aed_json}
-    if args.medical_json:
-        datasets["emergency_room"] = args.medical_json
+    try:
+        datasets = resolve_datasets(args)
+    except RecordError as error:
+        raise SystemExit(str(error)) from error
     try:
         if args.dry_run:
             summary = dry_run(datasets, batch_size=args.batch_size, error_log=args.error_log)
@@ -344,12 +345,19 @@ def main():
             summary["db_emergency_room_count_after"] = after_stats.get(
                 "emergency_room_count"
             )
-            if (
+            if "emergency_room" not in datasets and (
                 before_stats.get("emergency_room_count")
                 != after_stats.get("emergency_room_count")
             ):
                 raise RuntimeError(
                     "Emergency-room count changed during the AED import"
+                )
+            if "aed" not in datasets and (
+                before_stats.get("aed_count")
+                != after_stats.get("aed_count")
+            ):
+                raise RuntimeError(
+                    "AED count changed during the emergency-room import"
                 )
             print("Supabase REST API import completed.")
     except RecordError as error:

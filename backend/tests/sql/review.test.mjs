@@ -63,6 +63,9 @@ before(async ()=>{
     await db.exec(migration);
     // Check reapplication does not relocate the guarded wrapper over its helper.
     await db.exec(migration);
+    const statsMigration = await readFile('supabase/migrations/20261021020000_optimize_aed_import_stats.sql','utf8');
+    await db.exec(statsMigration);
+    await db.exec(statsMigration);
 });
 beforeEach(async ()=>{
     await db.exec('BEGIN');
@@ -79,6 +82,17 @@ test('normal changes apply atomically and exact repeats are unchanged',async ()=
     assert.equal((await stage(next)).updated,1);
     assert.equal((await snapshot()).name,'Updated fixture');
     assert.equal((await stage(next)).unchanged,1);
+});
+test('optimized AED statistics retain the established verification contract',async ()=>{
+    assert.deepEqual(await value('SELECT public.get_aed_import_stats() AS result'),{
+        emergency_room_count:0,
+        aed_count:1,
+        distinct_source_id_count:1,
+        missing_coordinate_count:0,
+        out_of_range_coordinate_count:0,
+        access_hours_count:7,
+        schedule_status_counts:{known:1},
+    });
 });
 test('coordinate anomalies are held and original data is retained',async ()=>{
     const original=await snapshot();

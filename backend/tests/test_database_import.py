@@ -5,11 +5,15 @@ from pathlib import Path
 import pytest
 
 from scripts.import_facilities import (
+    DEFAULT_DATASETS,
     RecordError,
+    build_parser,
     build_rpc_record,
     dry_run,
+    main,
     normalize_record,
     parse_optional_timestamp,
+    resolve_datasets,
     upsert_batch,
 )
 
@@ -39,12 +43,13 @@ def test_normalize_aed_preserves_hours_and_extra_fields():
         "gugun": None,
         "access_hours": [
             {
-                "weekday": 1,
+                "weekday": weekday,
                 "opens_at": "00:00",
                 "closes_at": "00:00",
                 "ends_next_day": True,
                 "is_24_hours": True,
             }
+            for weekday in range(1, 8)
         ],
     }
 
@@ -54,6 +59,7 @@ def test_normalize_aed_preserves_hours_and_extra_fields():
     assert normalized["facility"]["installation_detail"] == "1층 로비"
     assert normalized["facility"]["data_collected_at"].utcoffset() == timezone.utc.utcoffset(None)
     assert normalized["access_hours"][0]["opens_at"] == time(0, 0)
+    assert len(normalized["access_hours"]) == 7
     assert normalized["access_hours"][0]["is_24_hours"] is True
 
 
@@ -233,14 +239,74 @@ def test_dry_run_counts_duplicate_source_ids(tmp_path):
     assert summary["failed_count"] == 1
 
 
-def test_dry_run_counts_duplicate_source_ids(tmp_path):
-    source = tmp_path / "aed.json"
-    row = {"facility_type": "aed", "source_id": "AED-1"}
-    source.write_text(json.dumps([row, row]), encoding="utf-8")
+def test_resolve_datasets_default_aed_only():
+    parser = build_parser()
+    args = parser.parse_args([])
+    datasets = resolve_datasets(args)
 
-    summary = dry_run({"aed": source}, error_log=tmp_path / "errors.jsonl")
+    assert set(datasets.keys()) == {"aed"}
+    assert datasets["aed"] == DEFAULT_DATASETS["aed"]
 
-    assert summary["input_count"] == 2
-    assert summary["valid_count"] == 1
-    assert summary["duplicate_source_id_count"] == 1
-    assert summary["failed_count"] == 1
+
+def test_resolve_datasets_concurrent_aed_and_medical():
+    parser = build_parser()
+    custom_medical = Path("medical/sample.json")
+    args = parser.parse_args(["--medical-json", str(custom_medical)])
+    datasets = resolve_datasets(args)
+
+    assert set(datasets.keys()) == {"aed", "emergency_room"}
+    assert datasets["aed"] == DEFAULT_DATASETS["aed"]
+    assert datasets["emergency_room"] == custom_medical
+
+
+def test_resolve_datasets_only_medical_requires_medical_json():
+    parser = build_parser()
+    args = parser.parse_args(["--only-medical"])
+
+    with pytest.raises(RecordError, match="--only-medical requires --medical-json"):
+        resolve_datasets(args)
+
+
+def test_resolve_datasets_only_medical_selects_emergency_room_only():
+    parser = build_parser()
+    custom_medical = Path("medical/sample.json")
+    args = parser.parse_args(["--only-medical", "--medical-json", str(custom_medical)])
+    datasets = resolve_datasets(args)
+
+    assert datasets == {"emergency_room": custom_medical}
+    assert "aed" not in datasets
+
+
+def test_only_medical_dry_run_selects_and_validates_530_emergency_rooms(tmp_path):
+    medical_path = DEFAULT_DATASETS["emergency_room"]
+    assert medical_path.exists()
+
+    parser = build_parser()
+    args = parser.parse_args(["--only-medical", "--medical-json", str(medical_path), "--dry-run"])
+    datasets = resolve_datasets(args)
+    assert datasets == {"emergency_room": medical_path}
+
+    summary = dry_run(datasets, error_log=tmp_path / "errors.jsonl")
+    assert summary == {
+        "input_count": 530,
+        "valid_count": 530,
+        "failed_count": 0,
+        "duplicate_source_id_count": 0,
+    }
+
+
+def test_main_only_medical_cli_dry_run(capsys):
+    medical_path = DEFAULT_DATASETS["emergency_room"]
+    main(["--only-medical", "--medical-json", str(medical_path), "--dry-run"])
+    captured = capsys.readouterr().out
+
+    assert "input_count: 530" in captured
+    assert "valid_count: 530" in captured
+    assert "failed_count: 0" in captured
+    assert "duplicate_source_id_count: 0" in captured
+
+
+def test_main_only_medical_cli_without_medical_json_exits():
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--only-medical", "--dry-run"])
+    assert "--only-medical requires --medical-json" in str(exc_info.value)
