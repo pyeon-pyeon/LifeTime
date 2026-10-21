@@ -6,10 +6,6 @@ export async function apiGet(
   path: string,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  if (!API_BASE_URL) {
-    throw new Error('VITE_API_BASE_URL 설정을 확인해 주세요.')
-  }
-
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
     headers: {
