@@ -23,6 +23,7 @@ type FacilityExplorerProps = {
   comparisonTotal: number
   comparisonSuccessCount: number
   comparisonFailedCount: number
+  routeCooldownSeconds: number
   onCompare: () => void
   onRetry: () => void
   onFilterChange: (filter: FacilityFilter) => void
@@ -59,6 +60,7 @@ export default function FacilityExplorer({
   comparisonTotal,
   comparisonSuccessCount,
   comparisonFailedCount,
+  routeCooldownSeconds,
   onCompare,
   onRetry,
   onFilterChange,
@@ -136,13 +138,16 @@ export default function FacilityExplorer({
             disabled={
               !comparisonEnabled ||
               comparisonLoading ||
-              comparisonDone
+              comparisonDone ||
+              routeCooldownSeconds > 0
             }
             onClick={onCompare}
           >
             <Icon name="clock" size={16} />
 
-            {comparisonLoading
+            {routeCooldownSeconds > 0
+              ? `요청 대기 ${routeCooldownSeconds}초`
+              : comparisonLoading
               ? `경로 비교 중 ${comparisonCompleted}/${comparisonTotal}`
               : comparisonDone
                 ? `${travelMode}시간 비교 완료`

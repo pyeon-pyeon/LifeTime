@@ -64,7 +64,11 @@ async def request_route(
         return error(502, "경로 서버에 연결하지 못했습니다.")
 
     if response.status_code == 429:
-        return error(429, "경로 API 호출 제한에 도달했습니다.")
+        return JSONResponse(
+            status_code=429,
+            content={"message": "경로 API 호출 제한에 도달했습니다."},
+            headers={**headers, "X-RateLimit-Source": "upstream"},
+        )
 
     if not response.is_success:
         return error(

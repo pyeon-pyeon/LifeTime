@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Header from './components/Header'
 import FacilityMap from './components/FacilityMap'
 import FacilityExplorer from './components/FacilityExplorer'
@@ -11,6 +11,7 @@ import { useWalkingRanking } from './hooks/useWalkingRanking'
 import type { FacilityFilter } from './types/facility'
 import type { Coordinates } from './types/location'
 import './App.css'
+import { RATE_LIMIT_EVENT, RATE_LIMIT_MESSAGE } from './services/rateLimit.js'
 
 const SEARCH_RADIUS_BY_FILTER: Record<FacilityFilter, number> = {
   all: 500,
@@ -23,6 +24,38 @@ function App() {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [routeCooldownUntil, setRouteCooldownUntil] = useState(0)
+  const [routeCooldownNow, setRouteCooldownNow] = useState(0)
+  const [showRateLimitNotice, setShowRateLimitNotice] = useState(false)
+
+  useEffect(() => {
+    function onRateLimit(event: Event) {
+      const detail = (event as CustomEvent<{ until?: number }>).detail
+      if (typeof detail?.until !== 'number' || !Number.isFinite(detail.until)) return
+      setRouteCooldownUntil(detail.until)
+      setRouteCooldownNow(Date.now())
+      setShowRateLimitNotice(true)
+    }
+
+    window.addEventListener(RATE_LIMIT_EVENT, onRateLimit)
+    return () => window.removeEventListener(RATE_LIMIT_EVENT, onRateLimit)
+  }, [])
+
+  useEffect(() => {
+    if (!routeCooldownUntil) return
+    const timer = window.setInterval(() => setRouteCooldownNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [routeCooldownUntil])
+
+  const routeCooldownSeconds = Math.max(
+    0,
+    Math.ceil((routeCooldownUntil - routeCooldownNow) / 1000),
+  )
+  const rateLimitMessage = showRateLimitNotice
+    ? routeCooldownSeconds > 0
+      ? `${RATE_LIMIT_MESSAGE} ${routeCooldownSeconds}초 후 다시 시도할 수 있습니다.`
+      : `${RATE_LIMIT_MESSAGE} 다시 시도할 수 있습니다.`
+    : ''
 
   const [customSearchLocation, setCustomSearchLocation] =
     useState<Coordinates | null>(null)
@@ -153,6 +186,7 @@ function App() {
         comparisonTotal={comparisonCandidates.length}
         comparisonSuccessCount={ranking.results.length}
         comparisonFailedCount={ranking.failedIds.length}
+        routeCooldownSeconds={routeCooldownSeconds}
         onCompare={() => {
           if (!walking.loading) {
             void ranking.compare()
@@ -166,6 +200,7 @@ function App() {
           walkingRoute={displayedRoute}
           routeLoading={!comparedRoute && walking.loading}
           routeError={comparedRoute ? null : walking.error}
+          routeCooldownSeconds={routeCooldownSeconds}
           onClose={() => setSelectedId(null)}
           onRouteRequest={() => {
             if (!searchLocation) {
@@ -191,8 +226,11 @@ function App() {
       )}
 
       <Toast
-        message={message}
-        onClose={() => setMessage('')}
+        message={rateLimitMessage || message}
+        onClose={() => {
+          setMessage('')
+          setShowRateLimitNotice(false)
+        }}
       />
     </main>
   )

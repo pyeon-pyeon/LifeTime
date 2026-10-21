@@ -9,6 +9,7 @@ type FacilityDetailProps = {
   walkingRoute: WalkingRoute | null
   routeLoading: boolean
   routeError: string | null
+  routeCooldownSeconds: number
   onClose: () => void
   onRouteRequest: () => void
 }
@@ -80,6 +81,7 @@ export default function FacilityDetail({
   walkingRoute,
   routeLoading,
   routeError,
+  routeCooldownSeconds,
 }: FacilityDetailProps) {
   const [detailState, setDetailState] = useState<DetailState | null>(null)
   const [retryCount, setRetryCount] = useState(0)
@@ -253,10 +255,12 @@ export default function FacilityDetail({
       <button
         type="button"
         className="route-button"
-        disabled={routeLoading}
+        disabled={routeLoading || routeCooldownSeconds > 0}
         onClick={onRouteRequest}
       >
-        {routeLoading
+        {routeCooldownSeconds > 0
+          ? `${routeCooldownSeconds}초 후 다시 시도`
+          : routeLoading
           ? '경로 계산 중…'
           : facility.type === 'aed'
             ? '도보 경로 보기'

@@ -1,15 +1,18 @@
 """Admin-only changes. Supabase Auth validates the token; users cannot set app_metadata."""
 
 from uuid import UUID
+from typing import Literal, get_args
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .facilities import get_facility_client
-from scripts.import_facilities import normalize_record, build_rpc_record, RecordError
+from scripts.import_facilities import build_rpc_record, RecordError
+from facility_validation import FacilityRecord, normalize_facility_record
 
 router = APIRouter(prefix="/api/admin", tags=["administration"])
 bearer = HTTPBearer(auto_error=False)
+AdminAction = Literal["approve", "reject", "restore"]
 
 
 def authenticated_admin(credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
@@ -23,7 +26,7 @@ def authenticated_admin(credentials: HTTPAuthorizationCredentials | None = Depen
         raise HTTPException(401, "Invalid authentication") from None
     if user is None:
         raise HTTPException(401, "Invalid authentication")
-    if user.app_metadata.get("role") != "admin":
+    if not isinstance(user.app_metadata, dict) or user.app_metadata.get("role") != "admin":
         raise HTTPException(403, "Administrator required")
     return str(user.id)
 
@@ -31,13 +34,23 @@ def authenticated_admin(credentials: HTTPAuthorizationCredentials | None = Depen
 class ChangeProposal(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID
-    record: dict
+    record: FacilityRecord
 
 
 class DecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID
     reason: str = Field(min_length=1, max_length=500)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalized_reason(cls, value):
+        if not isinstance(value, str):
+            raise ValueError("reason must be a string")
+        value = value.strip()
+        if not 1 <= len(value) <= 500:
+            raise ValueError("reason must contain 1 to 500 characters")
+        return value
 
 
 def execute_change(client, name, params):
@@ -60,7 +73,11 @@ def execute_change(client, name, params):
 def propose_change(facility_id: UUID, request: ChangeProposal,
                    actor=Depends(authenticated_admin), client=Depends(get_facility_client)):
     try:
-        normalized = normalize_record(request.record, request.record.get("facility_type"))
+        normalized_record = normalize_facility_record(request.record.model_dump(mode="json"))
+        normalized = {
+            "facility": {key: value for key, value in normalized_record.items() if key != "access_hours"},
+            "access_hours": normalized_record["access_hours"],
+        }
         record = build_rpc_record(normalized)
     except (RecordError, ValueError, TypeError):
         raise HTTPException(422, "Invalid facility change") from None
@@ -72,7 +89,7 @@ def propose_change(facility_id: UUID, request: ChangeProposal,
 @router.post("/facility-changes/{change_id}/{action}")
 def decide_change(change_id: UUID, action: str, request: DecisionRequest,
                   actor=Depends(authenticated_admin), client=Depends(get_facility_client)):
-    if action not in {"approve", "reject", "restore"}:
+    if action not in get_args(AdminAction):
         raise HTTPException(404, "Unknown change action")
     return execute_change(client, "decide_facility_change", {
         "p_change_id": str(change_id), "p_action": action,
