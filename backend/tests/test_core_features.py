@@ -183,7 +183,7 @@ def api():
     db=Database()
     app.dependency_overrides[get_facility_client]=lambda:db
     app.dependency_overrides[get_walking_provider]=lambda:MockWalkingProvider()
-    with TestClient(app) as client: yield client,db
+    with TestClient(app, client=("127.0.0.1", 12345)) as client: yield client,db
     app.dependency_overrides.clear()
 
 

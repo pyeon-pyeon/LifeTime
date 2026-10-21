@@ -4,6 +4,8 @@ import type { Coordinates } from '../types/location'
 import { loadKakaoMap } from '../services/kakaoMapLoader'
 import Icon from './Icon'
 import type { WalkingRoute } from '../types/route'
+import type { WalkingRanks } from '../types/ranking'
+
 
 type FacilityMapProps = {
   facilities: Facility[]
@@ -11,12 +13,11 @@ type FacilityMapProps = {
   currentLocation: Coordinates | null
   searchLocation: Coordinates | null
   walkingRoute: WalkingRoute | null
-  editingLocation: boolean
   locating: boolean
+  walkingRanks: WalkingRanks
+  onSearchLocationChange: (coordinates: Coordinates) => void
   onSelect: (id: string) => void
   onLocate: () => void
-  onConfirmLocation: (coordinates: Coordinates) => void
-  onCancelEdit: () => void
 }
 
 export default function FacilityMap({
@@ -25,16 +26,15 @@ export default function FacilityMap({
   currentLocation,
   searchLocation,
   walkingRoute,
-  editingLocation,
   locating,
+  walkingRanks,
+  onSearchLocationChange,
   onSelect,
   onLocate,
-  onConfirmLocation,
-  onCancelEdit,
 }: FacilityMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<kakao.maps.Map | null>(null)
-
+  const draggedLocationRef = useRef<Coordinates | null>(null)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
 
@@ -51,7 +51,7 @@ export default function FacilityMap({
 
         const map = new window.kakao.maps.Map(container, {
           center: new window.kakao.maps.LatLng(37.5665, 126.978),
-          level: 5,
+          level: 3,
         })
 
         mapRef.current = map
@@ -80,6 +80,41 @@ export default function FacilityMap({
       container?.replaceChildren()
     }
   }, [])
+  // 상세 패널이 열려 있으면 지도만 이동하고 검색 기준 유지
+  useEffect(() => {
+    const map = mapRef.current
+
+    if (!ready || !map) return
+
+    const handleDragEnd = () => {
+      // 선택 시설·상세 패널·출발지를 그대로 유지
+      if (selectedId !== null) return
+
+      const center = map.getCenter()
+
+      const coordinates: Coordinates = {
+        latitude: center.getLat(),
+        longitude: center.getLng(),
+      }
+
+      draggedLocationRef.current = coordinates
+      onSearchLocationChange(coordinates)
+    }
+
+    window.kakao.maps.event.addListener(
+      map,
+      'dragend',
+      handleDragEnd,
+    )
+
+    return () => {
+      window.kakao.maps.event.removeListener(
+        map,
+        'dragend',
+        handleDragEnd,
+      )
+    }
+  }, [ready, selectedId, onSearchLocationChange])
 
   // 실제 현재 위치 표시. 검색 기준 위치와는 별개.
   useEffect(() => {
@@ -115,7 +150,7 @@ export default function FacilityMap({
   useEffect(() => {
     const map = mapRef.current
 
-    if (!ready || !map || !searchLocation || editingLocation) return
+    if (!ready || !map || !searchLocation) return
 
     const content = document.createElement('div')
     content.className = 'search-position-marker'
@@ -140,43 +175,49 @@ export default function FacilityMap({
     })
 
     return () => overlay.setMap(null)
-  }, [ready, searchLocation, editingLocation])
+  }, [ready, searchLocation])
 
-  // 위치 수정 진입·취소·확정 시 지도 중심 설정
+  // 최초 현재 위치 조회 또는 '내 위치' 복귀 시 지도 중심 설정
   useEffect(() => {
     const map = mapRef.current
-    const container = containerRef.current
 
-    if (!ready || !map || !container) return
+    if (!ready || !map || !searchLocation) return
 
-    // 패널 숨김으로 지도 크기가 변경된 뒤 크기 재계산
+    const draggedLocation = draggedLocationRef.current
+    draggedLocationRef.current = null
+
+    // 드래그한 위치는 이미 지도 중심이므로 이동·줌 초기화 생략
+    if (
+      draggedLocation &&
+      draggedLocation.latitude === searchLocation.latitude &&
+      draggedLocation.longitude === searchLocation.longitude
+    ) {
+      return
+    }
+
     map.relayout()
-
-    if (searchLocation) {
-      map.setCenter(
-        new window.kakao.maps.LatLng(
-          searchLocation.latitude,
-          searchLocation.longitude,
-        ),
-      )
-    }
-
-    // 수정 중에는 중앙 핀과 지도 중심을 정확하게 일치시킴
-    if (!editingLocation && searchLocation && container.clientWidth > 700) {
-      map.panBy(-190, 0)
-    }
-  }, [ready, searchLocation, editingLocation])
+    map.setLevel(3)
+    map.setCenter(
+      new window.kakao.maps.LatLng(
+        searchLocation.latitude,
+        searchLocation.longitude,
+      ),
+    )
+  }, [ready, searchLocation])
 
   // 시설 마커
   useEffect(() => {
     const map = mapRef.current
 
-    if (!ready || !map || editingLocation) return
+    if (!ready || !map) return
 
     const overlays: kakao.maps.CustomOverlay[] = []
     const cleanups: (() => void)[] = []
 
     facilities.forEach((facility) => {
+      const walkingRank = walkingRanks[facility.id]
+      const isSelected = selectedId === facility.id
+
       const button = document.createElement('button')
 
       button.type = 'button'
@@ -184,57 +225,101 @@ export default function FacilityMap({
         'map-marker',
         'kakao-facility-marker',
         facility.type,
-        selectedId === facility.id ? 'selected' : '',
-      ].join(' ')
+        isSelected ? 'selected' : '',
+        walkingRank ? 'is-walking-top' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
 
-      button.setAttribute('aria-label', `${facility.name} 상세 보기`)
-      button.setAttribute('aria-pressed', String(selectedId === facility.id))
+      button.setAttribute(
+        'aria-label',
+        walkingRank
+          ? `${facility.name}, 비교 후보 중 도보 ${walkingRank.rank}순위, ` +
+            `예상 ${Math.max(
+              1,
+              Math.ceil(walkingRank.durationSec / 60),
+            )}분`
+          : `${facility.name} 상세 보기`,
+      )
 
+      button.setAttribute('aria-pressed', String(isSelected))
+
+      // 시설 아이콘
       const symbol = document.createElement('span')
       symbol.className = 'marker-symbol'
-      symbol.textContent = facility.type === 'aed' ? 'ϟ' : '+'
       symbol.setAttribute('aria-hidden', 'true')
 
+      const image = document.createElement('img')
+
+      const imageName =
+        facility.type === 'aed' ? 'aed_image.jpg' : 'hospital.jpg'
+
+      image.src = `${import.meta.env.BASE_URL}images/${imageName}`
+      image.alt = ''
+      image.draggable = false
+      image.className = 'marker-image'
+
+      symbol.append(image)
+
+      // 시설명: 표시 여부는 기존 hover CSS에서 처리
       const label = document.createElement('span')
       label.className = 'marker-label'
       label.textContent = facility.name
 
       button.append(symbol, label)
 
+      // 예상 보행시간 상위 3개 순위 배지
+      if (walkingRank) {
+        const badge = document.createElement('span')
+
+        badge.className = 'map-walking-rank'
+        badge.textContent = String(walkingRank.rank)
+        badge.setAttribute('aria-hidden', 'true')
+
+        button.append(badge)
+      }
+
+      // 마커 선택
       const handleClick = () => onSelect(facility.id)
+
       button.addEventListener('click', handleClick)
 
       cleanups.push(() => {
         button.removeEventListener('click', handleClick)
       })
 
-      overlays.push(
-        new window.kakao.maps.CustomOverlay({
-          map,
-          position: new window.kakao.maps.LatLng(
-            facility.latitude,
-            facility.longitude,
-          ),
-          content: button,
-          clickable: true,
-          yAnchor: 1,
-          zIndex: selectedId === facility.id ? 20 : 10,
-        }),
-      )
+      const overlay = new window.kakao.maps.CustomOverlay({
+        map,
+        position: new window.kakao.maps.LatLng(
+          facility.latitude,
+          facility.longitude,
+        ),
+        content: button,
+        clickable: true,
+        yAnchor: 1,
+        zIndex: isSelected ? 40 : walkingRank ? 20 : 10,
+      })
+
+      overlays.push(overlay)
     })
 
     return () => {
       cleanups.forEach((cleanup) => cleanup())
       overlays.forEach((overlay) => overlay.setMap(null))
     }
-  }, [ready, facilities, selectedId, editingLocation, onSelect])
-
+  }, [
+    ready,
+    facilities,
+    selectedId,
+    onSelect,
+    walkingRanks,
+  ])
   // 선택한 시설로 이동
   useEffect(() => {
     const map = mapRef.current
     const container = containerRef.current
 
-    if (!ready || !map || !container || !selectedId || editingLocation) {
+    if (!ready || !map || !container || !selectedId ) {
       return
     }
 
@@ -254,25 +339,15 @@ export default function FacilityMap({
     if (container.clientWidth > 700) {
       map.panBy(-190, 0)
     }
-  }, [ready, selectedId, facilities, editingLocation])
+  }, [ready, selectedId, facilities])
 
-  function confirmLocation() {
-    const map = mapRef.current
-    if (!map) return
-
-    const center = map.getCenter()
-
-    onConfirmLocation({
-      latitude: center.getLat(),
-      longitude: center.getLng(),
-    })
-  }
+  
   // 도보 경로선 표시
 useEffect(() => {
   const map = mapRef.current
   const container = containerRef.current
 
-  if (!ready || !map || !container || !walkingRoute || editingLocation) {
+  if (!ready || !map || !container || !walkingRoute ) {
     return
   }
 
@@ -312,18 +387,21 @@ useEffect(() => {
   return () => {
     lines.forEach((line) => line.setMap(null))
   }
-}, [ready, walkingRoute, editingLocation])
+}, [ready, walkingRoute])
 
-  return (
+    return (
     <>
       <div
         ref={containerRef}
-        className={`kakao-map-container ${
-          editingLocation ? 'is-editing-location' : ''
-        }`}
+        className="kakao-map-container"
         role="region"
         aria-label="내 주변 시설 지도"
       />
+      {ready && selectedId === null && (
+        <div className="map-center-target" aria-hidden="true">
+          <span className="map-center-target-dot" />
+        </div>
+      )}
 
       {!ready && (
         <div className="map-load-state" role="status">
@@ -331,61 +409,16 @@ useEffect(() => {
         </div>
       )}
 
-      {editingLocation && ready && (
-        <>
-          <div className="location-edit-pin" aria-hidden="true">
-            <div className="location-edit-target" aria-hidden="true">
-                <span className="location-edit-target-dot" />
-            </div>
-          </div>
-
-          <div className="location-edit-hint" role="status">
-            <span className="location-edit-hint-dot" />
-            지도를 움직여 위치를 맞춰주세요
-          </div>
-
-          <section
-            className="location-edit-panel"
-            aria-label="검색 위치 설정"
-          >
-            <div className="location-edit-copy">
-                <span className="location-edit-caption">SEARCH LOCATION</span>
-                <strong>어디에서 찾을까요?</strong>
-            </div>
-
-            <div className="location-edit-actions">
-                <button
-                type="button"
-                className="location-edit-cancel"
-                onClick={onCancelEdit}
-                >
-                취소
-                </button>
-
-                <button
-                type="button"
-                className="location-edit-confirm"
-                onClick={confirmLocation}
-                >
-                이 위치로 설정
-                <Icon name="arrow" size={17} />
-                </button>
-            </div>
-          </section>
-        </>
-      )}
-
-      {!editingLocation && (
-        <button
-          type="button"
-          className="location-button"
-          aria-label="현재 위치 다시 확인 및 검색"
-          disabled={!ready || locating}
-          onClick={onLocate}
-        >
-          <Icon name="location" size={23} />
-        </button>
-      )}
+      <button
+        type="button"
+        className="location-button"
+        aria-label="내 위치로 돌아가서 검색"
+        disabled={!ready || locating}
+        onClick={onLocate}
+      >
+        <Icon name="location" size={23} />
+      </button>
     </>
   )
+
 }

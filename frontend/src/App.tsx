@@ -1,79 +1,138 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Header from './components/Header'
 import FacilityMap from './components/FacilityMap'
 import FacilityExplorer from './components/FacilityExplorer'
 import FacilityDetail from './components/FacilityDetail'
 import Toast from './components/Toast'
-import { mockFacilities } from './mocks/facilities'
 import { useGeolocation } from './hooks/useGeolocation'
-import { distanceMeters } from './utils/distance'
-import type { FacilityFilter } from './types/facility'
-import './App.css'
-import type { Coordinates } from './types/location'
 import { useWalkingRoute } from './hooks/useWalkingRoute'
+import { useNearbyFacilities } from './hooks/useNearbyFacilities'
+import { useWalkingRanking } from './hooks/useWalkingRanking'
+import type { FacilityFilter } from './types/facility'
+import type { Coordinates } from './types/location'
+import './App.css'
+import { RATE_LIMIT_EVENT, RATE_LIMIT_MESSAGE } from './services/rateLimit.js'
 
-const SEARCH_RADIUS_M = 3000
+const SEARCH_RADIUS_BY_FILTER: Record<FacilityFilter, number> = {
+  all: 500,
+  aed: 500,
+  emergency_room: 15000,
+}
 
 function App() {
   const [filter, setFilter] = useState<FacilityFilter>('all')
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [routeCooldownUntil, setRouteCooldownUntil] = useState(0)
+  const [routeCooldownNow, setRouteCooldownNow] = useState(0)
+  const [showRateLimitNotice, setShowRateLimitNotice] = useState(false)
+
+  useEffect(() => {
+    function onRateLimit(event: Event) {
+      const detail = (event as CustomEvent<{ until?: number }>).detail
+      if (typeof detail?.until !== 'number' || !Number.isFinite(detail.until)) return
+      setRouteCooldownUntil(detail.until)
+      setRouteCooldownNow(Date.now())
+      setShowRateLimitNotice(true)
+    }
+
+    window.addEventListener(RATE_LIMIT_EVENT, onRateLimit)
+    return () => window.removeEventListener(RATE_LIMIT_EVENT, onRateLimit)
+  }, [])
+
+  useEffect(() => {
+    if (!routeCooldownUntil) return
+    const timer = window.setInterval(() => setRouteCooldownNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [routeCooldownUntil])
+
+  const routeCooldownSeconds = Math.max(
+    0,
+    Math.ceil((routeCooldownUntil - routeCooldownNow) / 1000),
+  )
+  const rateLimitMessage = showRateLimitNotice
+    ? routeCooldownSeconds > 0
+      ? `${RATE_LIMIT_MESSAGE} ${routeCooldownSeconds}초 후 다시 시도할 수 있습니다.`
+      : `${RATE_LIMIT_MESSAGE} 다시 시도할 수 있습니다.`
+    : ''
+
+  const [customSearchLocation, setCustomSearchLocation] =
+    useState<Coordinates | null>(null)
 
   const location = useGeolocation()
-  const [customSearchLocation, setCustomSearchLocation] =
-  useState<Coordinates | null>(null)
 
-  const [editingLocation, setEditingLocation] = useState(false)
+  // 최초에는 현재 위치, 지도 드래그 후에는 선택한 위치 사용
+  const searchLocation =
+    customSearchLocation ?? location.coordinates
 
-  // 수동 설정이 있으면 그 위치, 없으면 현재 위치 사용
-  const searchLocation = customSearchLocation ?? location.coordinates
-
-  function confirmSearchLocation(coordinates: Coordinates) {
-    setCustomSearchLocation(coordinates)
-    setEditingLocation(false)
-    setSelectedId(null)
-    setMessage('선택한 위치를 기준으로 주변 시설을 검색합니다.')
-  }
+  const handleSearchLocationChange = useCallback(
+    (coordinates: Coordinates) => {
+      setCustomSearchLocation(coordinates)
+      setSelectedId(null)
+      setMessage('')
+    },
+    [],
+  )
 
   function useCurrentLocation() {
     setCustomSearchLocation(null)
-    setEditingLocation(false)
     setSelectedId(null)
+    setMessage('')
     location.refresh()
   }
 
-  const nearbyFacilities = searchLocation
-    ? mockFacilities
-        .map((facility) => ({
-          ...facility,
-          straightDistanceM: distanceMeters(searchLocation, facility),
-        }))
-        .filter(
-          (facility) => facility.straightDistanceM <= SEARCH_RADIUS_M,
-        )
-        .sort(
-          (a, b) => a.straightDistanceM - b.straightDistanceM,
-        )
-    : []
+  const searchRadiusM = SEARCH_RADIUS_BY_FILTER[filter]
 
-  const visibleFacilities = nearbyFacilities.filter((facility) => {
-    const matchesType = filter === 'all' || facility.type === filter
+  const nearby = useNearbyFacilities(
+    searchLocation,
+    filter,
+    searchRadiusM,
+  )
 
-    const matchesQuery = `${facility.name} ${facility.address}`
+  const visibleFacilities = nearby.facilities.filter((facility) =>
+    `${facility.name} ${facility.address}`
       .toLowerCase()
-      .includes(query.trim().toLowerCase())
+      .includes(query.trim().toLowerCase()),
+  )
 
-    return matchesType && matchesQuery
-  })
+  // 직선거리순 목록에서 최대 5곳을 경로 비교 후보로 선정
+  const comparisonCandidates = visibleFacilities.slice(0, 5)
+
+  // AED는 도보, 응급실은 차량 이동시간 비교
+  const ranking = useWalkingRanking(
+    searchLocation,
+    comparisonCandidates,
+    filter !== 'all',
+  )
+
+  const topThree = ranking.results.slice(0, 3)
+
+  const walkingRanks = Object.fromEntries(
+    topThree.map((item, index) => [
+      item.facilityId,
+      {
+        rank: index + 1,
+        durationSec: item.route.durationSec,
+      },
+    ]),
+  )
 
   const selectedFacility = visibleFacilities.find(
     (facility) => facility.id === selectedId,
   )
+
   const walking = useWalkingRoute(
     searchLocation,
-    editingLocation ? undefined : selectedFacility,
+    selectedFacility,
   )
+
+  // 비교 과정에서 계산한 경로를 상세 화면에서도 재사용
+  const comparedRoute = ranking.results.find(
+    (item) => item.facilityId === selectedFacility?.id,
+  )?.route
+
+  const displayedRoute = comparedRoute ?? walking.route
 
   function handleFilterChange(nextFilter: FacilityFilter) {
     setFilter(nextFilter)
@@ -85,30 +144,20 @@ function App() {
     setSelectedId(null)
   }
 
-  const locationDescription = customSearchLocation
-    ? '직접 선택한 위치 기준 · 반경 3km'
-    : location.status === 'loading'
-      ? '현재 위치를 확인하고 있습니다.'
-      : location.status === 'error'
-        ? location.error ?? '현재 위치를 확인하지 못했습니다.'
-        : `현재 위치 기준 반경 3km · 위치 정확도 약 ${Math.round(
-            location.accuracy ?? 0,
-          )}m`
 
   return (
-    <main className={`app-shell ${editingLocation ? 'editing-location' : ''}`}>
+    <main className="app-shell">
       <FacilityMap
         facilities={visibleFacilities}
         selectedId={selectedId}
-        walkingRoute={walking.route}
+        walkingRoute={displayedRoute}
+        walkingRanks={walkingRanks}
         currentLocation={location.coordinates}
         searchLocation={searchLocation}
-        editingLocation={editingLocation}
         locating={location.status === 'loading'}
         onSelect={setSelectedId}
         onLocate={useCurrentLocation}
-        onConfirmLocation={confirmSearchLocation}
-        onCancelEdit={() => setEditingLocation(false)}
+        onSearchLocationChange={handleSearchLocationChange}
       />
 
       <Header />
@@ -118,63 +167,58 @@ function App() {
         filter={filter}
         query={query}
         selectedId={selectedId}
+        loadStatus={nearby.status}
+        loadError={nearby.error}
+        onRetry={nearby.retry}
         onFilterChange={handleFilterChange}
         onQueryChange={handleQueryChange}
         onSelect={setSelectedId}
+        walkingRanks={walkingRanks}
+        comparisonEnabled={
+          searchLocation !== null &&
+          filter !== 'all' &&
+          nearby.status === 'success' &&
+          comparisonCandidates.length > 0
+        }
+        comparisonLoading={ranking.loading}
+        comparisonDone={ranking.done}
+        comparisonCompleted={ranking.completed}
+        comparisonTotal={comparisonCandidates.length}
+        comparisonSuccessCount={ranking.results.length}
+        comparisonFailedCount={ranking.failedIds.length}
+        routeCooldownSeconds={routeCooldownSeconds}
+        onCompare={() => {
+          if (!walking.loading) {
+            void ranking.compare()
+          }
+        }}
       />
-
-      {!editingLocation && (
-        <div
-          className={`location-status ${
-            !customSearchLocation && location.status === 'error'
-              ? 'is-error'
-              : ''
-          }`}
-          role="status"
-        >
-          <span>{locationDescription}</span>
-
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedId(null)
-              setEditingLocation(true)
-            }}
-          >
-            위치 수정
-          </button>
-
-          {customSearchLocation && (
-            <button
-              type="button"
-              onClick={useCurrentLocation}
-            >
-              현재 위치 사용
-            </button>
-          )}
-
-          {!customSearchLocation && location.status === 'error' && (
-            <button type="button" onClick={useCurrentLocation}>
-              다시 시도
-            </button>
-          )}
-        </div>
-      )}
 
       {selectedFacility && (
         <FacilityDetail
           facility={selectedFacility}
-          walkingRoute={walking.route}
-          routeLoading={walking.loading}
-          routeError={walking.error}
+          walkingRoute={displayedRoute}
+          routeLoading={!comparedRoute && walking.loading}
+          routeError={comparedRoute ? null : walking.error}
+          routeCooldownSeconds={routeCooldownSeconds}
           onClose={() => setSelectedId(null)}
           onRouteRequest={() => {
             if (!searchLocation) {
-              setMessage('먼저 현재 위치 또는 검색 위치를 설정해 주세요.')
+              setMessage('먼저 검색 위치를 설정해 주세요.')
               return
             }
 
-            if (!walking.loading) {
+            if (comparedRoute) {
+              const travelMode =
+                selectedFacility.type === 'aed' ? '도보' : '차량'
+
+              setMessage(
+                `비교할 때 계산한 ${travelMode} 경로를 표시하고 있습니다.`,
+              )
+              return
+            }
+
+            if (!walking.loading && !ranking.loading) {
               void walking.requestRoute()
             }
           }}
@@ -182,8 +226,11 @@ function App() {
       )}
 
       <Toast
-        message={message}
-        onClose={() => setMessage('')}
+        message={rateLimitMessage || message}
+        onClose={() => {
+          setMessage('')
+          setShowRateLimitNotice(false)
+        }}
       />
     </main>
   )

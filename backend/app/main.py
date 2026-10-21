@@ -11,6 +11,8 @@ from .facilities import get_facility_client, nearby_facilities, find_facility
 from .walking import get_walking_provider
 from .recommendations import recommend, get_closure_calendar
 from .admin import router as admin_router
+from .routes_proxy import router as routes_proxy_router
+from .rate_limit import RateLimitMiddleware, policy_and_store_from_env
 
 JSON_BODY_LIMIT_BYTES = 256 * 1024
 MAX_JSON_NESTING = 64
@@ -101,6 +103,10 @@ class BoundedJSONBodyMiddleware:
 
 app = FastAPI(title="LifeTime API", version="0.1.0")
 app.add_middleware(BoundedJSONBodyMiddleware)
+app.state.rate_limit_policy, app.state.rate_limit_store, app.state.rate_limit_config_error = (
+    policy_and_store_from_env()
+)
+app.add_middleware(RateLimitMiddleware, runtime_state=app.state)
 
 
 @app.exception_handler(RequestValidationError)
@@ -111,14 +117,20 @@ async def safe_validation_error(request: Request, exc: RequestValidationError):
         safe.append({"loc": loc, "msg": "Invalid request value", "type": error.get("type", "value_error")})
     return JSONResponse(status_code=422, content={"detail": safe})
 app.include_router(admin_router)
-
+app.include_router(routes_proxy_router)
 # For development only. Set explicit allowed origins before deployment.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    ],
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
+    expose_headers=["Retry-After", "X-RateLimit-Source"],
 )
 
 FacilityType = Literal["aed", "emergency_room"]
