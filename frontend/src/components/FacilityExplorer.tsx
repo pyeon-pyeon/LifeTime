@@ -1,0 +1,146 @@
+import type {
+  Facility,
+  FacilityFilter,
+} from '../types/facility'
+import Icon from './Icon'
+
+type FacilityExplorerProps = {
+  facilities: (Facility & { straightDistanceM: number })[]
+  filter: FacilityFilter
+  query: string
+  selectedId: string | null
+  onFilterChange: (filter: FacilityFilter) => void
+  onQueryChange: (query: string) => void
+  onSelect: (id: string) => void
+}
+
+const filters: { value: FacilityFilter; label: string }[] = [
+  { value: 'all', label: '전체 시설' },
+  { value: 'aed', label: 'AED' },
+  { value: 'emergency_room', label: '응급실' },
+]
+
+export default function FacilityExplorer({
+  facilities,
+  filter,
+  query,
+  selectedId,
+  onFilterChange,
+  onQueryChange,
+  onSelect,
+}: FacilityExplorerProps) {
+  return (
+    <section className="explorer" aria-labelledby="explorer-heading">
+      <div className="explorer-intro">
+        <p className="eyebrow">NEAR YOU, WHEN IT MATTERS</p>
+
+        <h1 id="explorer-heading">
+          필요한 순간,<br />
+          가장 가까운 도움.
+        </h1>
+
+        <p className="intro-description">
+          주변 AED와 응급의료시설을 살펴보세요.
+        </p>
+      </div>
+
+      <label className="search-box">
+        <Icon name="search" />
+
+        <input
+          aria-label="시설명 또는 주소 검색"
+          placeholder="시설명이나 주소로 검색"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+        />
+
+        {query && (
+          <button
+            type="button"
+            className="clear-search"
+            aria-label="검색어 지우기"
+            onClick={() => onQueryChange('')}
+          >
+            <Icon name="close" size={16} />
+          </button>
+        )}
+      </label>
+
+      <div className="filter-row" role="group" aria-label="시설 종류">
+        {filters.map(({ value, label }) => (
+          <button
+            key={value}
+            type="button"
+            className="filter-button"
+            aria-pressed={filter === value}
+            onClick={() => onFilterChange(value)}
+          >
+            {value !== 'all' && (
+              <span className={`filter-dot ${value}`} />
+            )}
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="list-heading">
+        <h2>
+          주변 시설 <span>{facilities.length}</span>
+        </h2>
+        <span>예시 목록</span>
+      </div>
+
+      <div className="results-scroll">
+        {facilities.length === 0 ? (
+          <div className="empty-results">
+            <Icon name="search" size={28} />
+            <h3>표시할 시설이 없어요</h3>
+            <p>
+                위치 권한·검색 조건을 확인해 주세요.
+                현재는 서울시청 주변의 가상 시설만 등록되어 있습니다.
+            </p>
+          </div>
+        ) : (
+          <ul className="facility-list">
+            {facilities.map((facility) => (
+              <li key={facility.id}>
+                <button
+                  type="button"
+                  className="facility-card"
+                  aria-pressed={selectedId === facility.id}
+                  onClick={() => onSelect(facility.id)}
+                >
+                  <div className="card-top">
+                    <span className={`facility-category ${facility.type}`}>
+                      {facility.type === 'aed'
+                        ? '자동심장충격기'
+                        : '응급실'}
+                    </span>
+                    <Icon name="arrow" size={18} />
+                  </div>
+
+                  <h3>{facility.name}</h3>
+                  <p className="facility-address">{facility.detail}</p>
+
+                  <div className="card-bottom">
+                    <span className="time-preview">
+                        <Icon name="pin" size={15} />
+                        직선거리 {Math.round(facility.straightDistanceM)}m
+                    </span>
+
+                    <span>가상 시설</span>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="panel-footer">
+        <span className="info-mark">i</span>
+        실제 시설·운영 정보를 반영하지 않은 시연 화면입니다.
+      </div>
+    </section>
+  )
+}
