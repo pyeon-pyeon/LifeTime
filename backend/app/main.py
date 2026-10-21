@@ -8,14 +8,20 @@ from .facilities import get_facility_client, nearby_facilities, find_facility
 from .walking import get_walking_provider
 from .recommendations import recommend, get_closure_calendar
 from .admin import router as admin_router
+from .routes_proxy import router as routes_proxy_router
 
 app = FastAPI(title="LifeTime API", version="0.1.0")
 app.include_router(admin_router)
-
+app.include_router(routes_proxy_router)
 # For development only. Set explicit allowed origins before deployment.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    ],
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
