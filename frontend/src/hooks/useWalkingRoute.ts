@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Coordinates } from '../types/location'
+import type { Facility } from '../types/facility'
 import type { WalkingRoute } from '../types/route'
-import { fetchWalkingRoute } from '../services/walkingRouteApi'
+import {
+  fetchWalkingRoute,
+  fetchDrivingRoute,
+} from '../services/walkingRouteApi'
 
 type RouteResult = {
   key: string
@@ -12,7 +16,9 @@ type RouteResult = {
 
 export function useWalkingRoute(
   origin: Coordinates | null,
-  destination: (Coordinates & { id: string }) | undefined,
+  destination:
+    | (Coordinates & Pick<Facility, 'id' | 'type'>)
+    | undefined,
 ) {
   const [result, setResult] = useState<RouteResult | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
@@ -23,6 +29,7 @@ export function useWalkingRoute(
           origin.latitude,
           origin.longitude,
           destination.id,
+          destination.type,
           destination.latitude,
           destination.longitude,
         ].join(':')
@@ -50,7 +57,12 @@ export function useWalkingRoute(
     })
 
     try {
-      const route = await fetchWalkingRoute(
+      const fetchRoute =
+        destination.type === 'emergency_room'
+          ? fetchDrivingRoute
+          : fetchWalkingRoute
+
+      const route = await fetchRoute(
         origin,
         destination,
         controller.signal,

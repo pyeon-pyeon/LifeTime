@@ -2,16 +2,26 @@ export default function Header() {
   return (
     <header className="topbar">
       <a className="brand" href="./" aria-label="LifeTime 처음 화면">
-        <span className="brand-symbol">+</span>
+        <img
+          className="brand-logo"
+          src={`${import.meta.env.BASE_URL}images/logo.png`}
+          alt=""
+          width={36}
+          height={36}
+        />
+
         <span>
-          LifeTime<span className="brand-dot">.</span>
+          LifeTime
         </span>
       </a>
 
-      <span className="preview-label">
-        <span />
-        가상 데이터 미리보기
-      </span>
+      <a
+        className="emergency-call-button"
+        href="tel:119"
+        aria-label="119에 전화하기"
+      >
+        119 전화
+      </a>
     </header>
   )
 }

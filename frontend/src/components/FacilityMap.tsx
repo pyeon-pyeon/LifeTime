@@ -4,6 +4,8 @@ import type { Coordinates } from '../types/location'
 import { loadKakaoMap } from '../services/kakaoMapLoader'
 import Icon from './Icon'
 import type { WalkingRoute } from '../types/route'
+import type { WalkingRanks } from '../types/ranking'
+
 
 type FacilityMapProps = {
   facilities: Facility[]
@@ -13,6 +15,7 @@ type FacilityMapProps = {
   walkingRoute: WalkingRoute | null
   editingLocation: boolean
   locating: boolean
+  walkingRanks: WalkingRanks
   onSelect: (id: string) => void
   onLocate: () => void
   onConfirmLocation: (coordinates: Coordinates) => void
@@ -27,6 +30,7 @@ export default function FacilityMap({
   walkingRoute,
   editingLocation,
   locating,
+  walkingRanks,
   onSelect,
   onLocate,
   onConfirmLocation,
@@ -51,7 +55,7 @@ export default function FacilityMap({
 
         const map = new window.kakao.maps.Map(container, {
           center: new window.kakao.maps.LatLng(37.5665, 126.978),
-          level: 5,
+          level: 3,
         })
 
         mapRef.current = map
@@ -177,6 +181,9 @@ export default function FacilityMap({
     const cleanups: (() => void)[] = []
 
     facilities.forEach((facility) => {
+      const walkingRank = walkingRanks[facility.id]
+      const isSelected = selectedId === facility.id
+
       const button = document.createElement('button')
 
       button.type = 'button'
@@ -184,51 +191,96 @@ export default function FacilityMap({
         'map-marker',
         'kakao-facility-marker',
         facility.type,
-        selectedId === facility.id ? 'selected' : '',
-      ].join(' ')
+        isSelected ? 'selected' : '',
+        walkingRank ? 'is-walking-top' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
 
-      button.setAttribute('aria-label', `${facility.name} 상세 보기`)
-      button.setAttribute('aria-pressed', String(selectedId === facility.id))
+      button.setAttribute(
+        'aria-label',
+        walkingRank
+          ? `${facility.name}, 비교 후보 중 도보 ${walkingRank.rank}순위, ` +
+            `예상 ${Math.max(
+              1,
+              Math.ceil(walkingRank.durationSec / 60),
+            )}분`
+          : `${facility.name} 상세 보기`,
+      )
 
+      button.setAttribute('aria-pressed', String(isSelected))
+
+      // 시설 아이콘
       const symbol = document.createElement('span')
       symbol.className = 'marker-symbol'
-      symbol.textContent = facility.type === 'aed' ? 'ϟ' : '+'
       symbol.setAttribute('aria-hidden', 'true')
 
+      const image = document.createElement('img')
+
+      const imageName =
+        facility.type === 'aed' ? 'aed_image.jpg' : 'hospital.jpg'
+
+      image.src = `${import.meta.env.BASE_URL}images/${imageName}`
+      image.alt = ''
+      image.draggable = false
+      image.className = 'marker-image'
+
+      symbol.append(image)
+
+      // 시설명: 표시 여부는 기존 hover CSS에서 처리
       const label = document.createElement('span')
       label.className = 'marker-label'
       label.textContent = facility.name
 
       button.append(symbol, label)
 
+      // 예상 보행시간 상위 3개 순위 배지
+      if (walkingRank) {
+        const badge = document.createElement('span')
+
+        badge.className = 'map-walking-rank'
+        badge.textContent = String(walkingRank.rank)
+        badge.setAttribute('aria-hidden', 'true')
+
+        button.append(badge)
+      }
+
+      // 마커 선택
       const handleClick = () => onSelect(facility.id)
+
       button.addEventListener('click', handleClick)
 
       cleanups.push(() => {
         button.removeEventListener('click', handleClick)
       })
 
-      overlays.push(
-        new window.kakao.maps.CustomOverlay({
-          map,
-          position: new window.kakao.maps.LatLng(
-            facility.latitude,
-            facility.longitude,
-          ),
-          content: button,
-          clickable: true,
-          yAnchor: 1,
-          zIndex: selectedId === facility.id ? 20 : 10,
-        }),
-      )
+      const overlay = new window.kakao.maps.CustomOverlay({
+        map,
+        position: new window.kakao.maps.LatLng(
+          facility.latitude,
+          facility.longitude,
+        ),
+        content: button,
+        clickable: true,
+        yAnchor: 1,
+        zIndex: isSelected ? 40 : walkingRank ? 20 : 10,
+      })
+
+      overlays.push(overlay)
     })
 
     return () => {
       cleanups.forEach((cleanup) => cleanup())
       overlays.forEach((overlay) => overlay.setMap(null))
     }
-  }, [ready, facilities, selectedId, editingLocation, onSelect])
-
+  }, [
+    ready,
+    facilities,
+    selectedId,
+    editingLocation,
+    onSelect,
+    walkingRanks,
+  ])
   // 선택한 시설로 이동
   useEffect(() => {
     const map = mapRef.current

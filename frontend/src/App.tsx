@@ -4,13 +4,14 @@ import FacilityMap from './components/FacilityMap'
 import FacilityExplorer from './components/FacilityExplorer'
 import FacilityDetail from './components/FacilityDetail'
 import Toast from './components/Toast'
-import { mockFacilities } from './mocks/facilities'
 import { useGeolocation } from './hooks/useGeolocation'
-import { distanceMeters } from './utils/distance'
 import type { FacilityFilter } from './types/facility'
 import './App.css'
 import type { Coordinates } from './types/location'
 import { useWalkingRoute } from './hooks/useWalkingRoute'
+import { useNearbyFacilities } from './hooks/useNearbyFacilities'
+import { useWalkingRanking } from './hooks/useWalkingRanking'
+
 
 const SEARCH_RADIUS_M = 3000
 
@@ -43,29 +44,39 @@ function App() {
     location.refresh()
   }
 
-  const nearbyFacilities = searchLocation
-    ? mockFacilities
-        .map((facility) => ({
-          ...facility,
-          straightDistanceM: distanceMeters(searchLocation, facility),
-        }))
-        .filter(
-          (facility) => facility.straightDistanceM <= SEARCH_RADIUS_M,
-        )
-        .sort(
-          (a, b) => a.straightDistanceM - b.straightDistanceM,
-        )
-    : []
+  const nearby = useNearbyFacilities(
+    searchLocation,
+    filter,
+    SEARCH_RADIUS_M,
+  )
 
-  const visibleFacilities = nearbyFacilities.filter((facility) => {
-    const matchesType = filter === 'all' || facility.type === filter
-
-    const matchesQuery = `${facility.name} ${facility.address}`
+  const visibleFacilities = nearby.facilities.filter((facility) =>
+    `${facility.name} ${facility.address}`
       .toLowerCase()
-      .includes(query.trim().toLowerCase())
+      .includes(query.trim().toLowerCase()),
+  )
 
-    return matchesType && matchesQuery
-  })
+  // nearby.facilities는 앞서 직선거리순으로 정렬한 API 결과
+  // 검색어로 좁힌 결과 중 최대 5개를 비교
+  const comparisonCandidates = visibleFacilities.slice(0, 5)
+
+  const ranking = useWalkingRanking(
+    searchLocation,
+    comparisonCandidates,
+    filter !== 'all' && !editingLocation,
+  )
+
+  const topThree = ranking.results.slice(0, 3)
+
+  const walkingRanks = Object.fromEntries(
+    topThree.map((item, index) => [
+      item.facilityId,
+      {
+        rank: index + 1,
+        durationSec: item.route.durationSec,
+      },
+    ]),
+  )
 
   const selectedFacility = visibleFacilities.find(
     (facility) => facility.id === selectedId,
@@ -74,6 +85,12 @@ function App() {
     searchLocation,
     editingLocation ? undefined : selectedFacility,
   )
+  // 비교 과정에서 계산한 경로는 상세 화면에서도 재사용
+  const comparedRoute = ranking.results.find(
+    (item) => item.facilityId === selectedFacility?.id,
+  )?.route
+
+  const displayedRoute = comparedRoute ?? walking.route
 
   function handleFilterChange(nextFilter: FacilityFilter) {
     setFilter(nextFilter)
@@ -100,7 +117,8 @@ function App() {
       <FacilityMap
         facilities={visibleFacilities}
         selectedId={selectedId}
-        walkingRoute={walking.route}
+        walkingRoute={displayedRoute}
+        walkingRanks={walkingRanks}
         currentLocation={location.coordinates}
         searchLocation={searchLocation}
         editingLocation={editingLocation}
@@ -118,9 +136,30 @@ function App() {
         filter={filter}
         query={query}
         selectedId={selectedId}
+        loadStatus={nearby.status}
+        loadError={nearby.error}
+        onRetry={nearby.retry}
         onFilterChange={handleFilterChange}
         onQueryChange={handleQueryChange}
         onSelect={setSelectedId}
+        walkingRanks={walkingRanks}
+        comparisonEnabled={
+          filter !== 'all' &&
+          nearby.status === 'success' &&
+          comparisonCandidates.length > 0 &&
+          !editingLocation
+        }
+        comparisonLoading={ranking.loading}
+        comparisonDone={ranking.done}
+        comparisonCompleted={ranking.completed}
+        comparisonTotal={comparisonCandidates.length}
+        comparisonSuccessCount={ranking.results.length}
+        comparisonFailedCount={ranking.failedIds.length}
+        onCompare={() => {
+          if (!walking.loading) {
+            void ranking.compare()
+          }
+        }}
       />
 
       {!editingLocation && (
@@ -164,17 +203,27 @@ function App() {
       {selectedFacility && (
         <FacilityDetail
           facility={selectedFacility}
-          walkingRoute={walking.route}
-          routeLoading={walking.loading}
-          routeError={walking.error}
+          walkingRoute={displayedRoute}
+          routeLoading={!comparedRoute && walking.loading}
+          routeError={comparedRoute ? null : walking.error}
           onClose={() => setSelectedId(null)}
           onRouteRequest={() => {
             if (!searchLocation) {
-              setMessage('먼저 현재 위치 또는 검색 위치를 설정해 주세요.')
+              setMessage('먼저 검색 위치를 설정해 주세요.')
               return
             }
 
-            if (!walking.loading) {
+            if (comparedRoute) {
+              const travelMode =
+                selectedFacility.type === 'aed' ? '도보' : '차량'
+
+              setMessage(
+                `비교할 때 계산한 ${travelMode} 경로를 표시하고 있습니다.`,
+              )
+              return
+            }
+
+            if (!walking.loading && !ranking.loading) {
               void walking.requestRoute()
             }
           }}
