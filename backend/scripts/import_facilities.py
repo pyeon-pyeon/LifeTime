@@ -301,20 +301,43 @@ def dry_run(datasets, *, batch_size=500, error_log=DEFAULT_ERROR_LOG):
     return summary
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--aed-json", type=Path, default=DEFAULT_DATASETS["aed"])
     parser.add_argument("--medical-json", type=Path)
+    parser.add_argument(
+        "--only-medical",
+        action="store_true",
+        help="Validate or import only the emergency room dataset",
+    )
     parser.add_argument("--error-log", type=Path, default=DEFAULT_ERROR_LOG)
-    args = parser.parse_args()
+    return parser
+
+
+def resolve_datasets(args):
+    if getattr(args, "only_medical", False):
+        if not getattr(args, "medical_json", None):
+            raise RecordError("--only-medical requires --medical-json")
+        return {"emergency_room": args.medical_json}
+
+    datasets = {"aed": args.aed_json}
+    if getattr(args, "medical_json", None):
+        datasets["emergency_room"] = args.medical_json
+    return datasets
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
     if args.batch_size < 1:
         raise SystemExit("--batch-size must be at least 1")
 
-    datasets = {"aed": args.aed_json}
-    if args.medical_json:
-        datasets["emergency_room"] = args.medical_json
+    try:
+        datasets = resolve_datasets(args)
+    except RecordError as error:
+        raise SystemExit(str(error)) from error
     try:
         if args.dry_run:
             summary = dry_run(datasets, batch_size=args.batch_size, error_log=args.error_log)
@@ -344,12 +367,19 @@ def main():
             summary["db_emergency_room_count_after"] = after_stats.get(
                 "emergency_room_count"
             )
-            if (
+            if "emergency_room" not in datasets and (
                 before_stats.get("emergency_room_count")
                 != after_stats.get("emergency_room_count")
             ):
                 raise RuntimeError(
                     "Emergency-room count changed during the AED import"
+                )
+            if "aed" not in datasets and (
+                before_stats.get("aed_count")
+                != after_stats.get("aed_count")
+            ):
+                raise RuntimeError(
+                    "AED count changed during the emergency-room import"
                 )
             print("Supabase REST API import completed.")
     except RecordError as error:
